@@ -1,0 +1,5 @@
+{
+  "name": "Pakar Buat Soal",
+  "description": "AI-powered structured question generator with caching and user management.",
+  "requestFramePermissions": []
+}
