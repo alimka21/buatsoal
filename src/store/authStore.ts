@@ -45,7 +45,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   refreshProfile: async () => {
-    const { session } = get();
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
     try {
@@ -53,10 +53,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
       
+      console.log("Auth UID:", session.user.id);
+      console.log("Profile raw data:", data);
+      console.log("Profile error:", error);
+
+      if (error) {
+         console.log("Profile fetch error:", error);
+      }
+
       if (!error && data) {
         set({ profile: data as Profile });
+      } else {
+        set({ profile: null });
       }
     } catch (error) {
       console.error("Error fetching profile:", error);

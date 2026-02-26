@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-export const GENERATION_MODEL = "gemini-2.5-flash-image";
+export const GENERATION_MODEL = "gemini-3-flash-preview";
 
 const MAX_RETRIES = 2;
 

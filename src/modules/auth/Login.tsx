@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/services/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -19,7 +19,31 @@ export default function Login() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [subscriptionLink, setSubscriptionLink] = useState('https://s.id/alimkadigital');
   const refreshProfile = useAuthStore((state) => state.refreshProfile);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'subscription_link')
+          .maybeSingle();
+        
+        if (data && !error) {
+          setSubscriptionLink(data.value);
+        } else {
+          // Fallback to local storage if DB table doesn't exist yet
+          const localLink = localStorage.getItem('subscription_link');
+          if (localLink) setSubscriptionLink(localLink);
+        }
+      } catch (err) {
+        // Ignore errors if table doesn't exist
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -165,10 +189,15 @@ export default function Login() {
 
           <div className="mt-8 pt-8 border-t border-slate-100 text-center space-y-4">
             <p className="text-sm text-slate-500">Belum punya akun?</p>
-            <button className="w-full py-3 px-4 border-2 border-royal-blue-100 text-royal-blue-700 bg-royal-blue-50 hover:bg-royal-blue-100 font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+            <a 
+              href={subscriptionLink} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="w-full py-3 px-4 border-2 border-royal-blue-100 text-royal-blue-700 bg-royal-blue-50 hover:bg-royal-blue-100 font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
               <CreditCard size={18} />
-              Langganan Pakar Kokurikuler
-            </button>
+              Langganan Pakar Buat Soal
+            </a>
             <p className="text-xs text-slate-300 mt-8">Dev by Muhammad Alimka | 2026</p>
           </div>
         </div>

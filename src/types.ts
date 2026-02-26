@@ -2,6 +2,7 @@ export interface Profile {
   id: string;
   full_name: string;
   role: 'admin' | 'user';
+  email?: string;
   password_text: string;
   must_change_password: boolean;
   api_key?: string;

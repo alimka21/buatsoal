@@ -4,16 +4,23 @@ import GeneratorForm from './GeneratorForm';
 import ResultViewer from './ResultViewer';
 import { useFirstLogin } from '@/hooks/useFirstLogin';
 import { useState } from 'react';
+import Swal from 'sweetalert2';
 
 export default function Generator() {
   useFirstLogin();
   const { session } = useAuthStore();
-  const { loading, result, error, cacheHit, generate } = useGeneratorStore();
-  const [formData, setFormData] = useState<any>(null);
+  const { isGenerating, result, error, cacheHit, addToCart, formData, setFormData } = useGeneratorStore();
 
-  const handleGenerate = (data: any) => {
+  const handleAddToCart = (data: any) => {
     if (session?.user.id) {
-      generate(session.user.id, data);
+      addToCart(data);
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'Sesi Habis',
+        text: 'Silakan login kembali untuk melanjutkan.',
+        confirmButtonColor: '#2563eb'
+      });
     }
   };
 
@@ -22,8 +29,8 @@ export default function Generator() {
       {/* Left Sidebar Form */}
       <div className="w-[400px] xl:w-[450px] flex-none z-20 h-full border-r border-slate-200 bg-white">
         <GeneratorForm 
-          onSubmit={handleGenerate} 
-          isLoading={loading} 
+          onSubmit={handleAddToCart} 
+          isLoading={isGenerating} 
           onValuesChange={setFormData}
         />
       </div>
@@ -33,7 +40,7 @@ export default function Generator() {
         <ResultViewer 
           result={result} 
           cached={cacheHit} 
-          isLoading={loading} 
+          isLoading={isGenerating} 
           error={error} 
           formData={formData}
         />

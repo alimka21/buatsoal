@@ -12,7 +12,7 @@ export interface GeneratedQuestion {
   id: string;
   user_id: string;
   input_hash: string;
-  input_payload: any;
+  input_payload_json: any;
   result_json: any;
   model_used: string;
   created_at: string;

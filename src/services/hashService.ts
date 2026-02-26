@@ -1,9 +1,12 @@
 import CryptoJS from 'crypto-js';
 
 export const generateHash = (payload: any): string => {
-  // 1. Remove API key if present
-  const { apiKey, ...data } = payload;
+  // 1. Remove API key, generate_image, and image_model_name if present
+  const { apiKey, generate_image, image_model_name, ...data } = payload;
   
+  // Add model names to ensure hash changes if models change
+  data.text_model_name = "gemini-2.5-flash";
+
   // 2. Deterministic sort of keys
   const sortObject = (obj: any): any => {
     if (typeof obj !== 'object' || obj === null) {

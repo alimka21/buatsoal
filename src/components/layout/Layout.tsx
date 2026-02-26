@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { LogOut, History, Settings, PenTool, Bell, User } from 'lucide-react';
+import { LogOut, History, Settings, PenTool, Bell, User, GraduationCap } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import Swal from 'sweetalert2';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,13 +12,14 @@ export default function Layout() {
   
   const handleLogout = async () => {
     const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: "You will be logged out of your session.",
+      title: 'Apakah Anda yakin?',
+      text: "Anda akan keluar dari sesi ini.",
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#2563eb', // Royal Blue 600
       cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, logout!'
+      confirmButtonText: 'Ya, Keluar!',
+      cancelButtonText: 'Batal'
     });
 
     if (result.isConfirmed) {
@@ -27,15 +28,14 @@ export default function Layout() {
     }
   };
 
-  const navItems = [
-    { label: 'Buat Soal', href: '/generator', icon: PenTool },
-  ];
+  const navItems = [];
 
   if (profile?.role === 'admin') {
     navItems.push({ label: 'Halaman Admin', href: '/admin', icon: Settings });
   }
 
   navItems.push(
+    { label: 'Buat Soal', href: '/generator', icon: PenTool },
     { label: 'Riwayat Soal', href: '/history', icon: History },
     { label: 'Pengaturan', href: '/settings', icon: Settings }
   );
@@ -46,9 +46,9 @@ export default function Layout() {
       <header className="flex-none h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between z-30 shadow-sm sticky top-0">
         <div className="flex items-center gap-3">
           <div className="size-8 rounded-lg bg-royal-blue-600 flex items-center justify-center text-white">
-            <span className="text-lg font-bold">HG</span>
+            <GraduationCap size={20} />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">HOTS Gen</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">Pakar Buat Soal</h1>
         </div>
 
         <nav className="hidden md:flex items-center gap-1">
@@ -74,13 +74,19 @@ export default function Layout() {
 
         <div className="flex items-center gap-4">
            {/* Desktop Profile Display */}
-           <div className="hidden md:flex flex-col items-end">
-              <span className="text-sm font-bold text-slate-900">{profile?.full_name}</span>
+           <div className="hidden md:flex items-center gap-4">
+              <div className="flex items-center gap-2 border-r border-slate-200 pr-4">
+                <span className="text-sm font-bold text-slate-900">{profile?.full_name}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 capitalize">
+                  {profile?.role || 'user'}
+                </span>
+              </div>
               <button 
                 onClick={handleLogout}
-                className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                className="flex items-center gap-2 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
               >
-                Keluar Aplikasi
+                <LogOut size={16} />
+                <span>Keluar</span>
               </button>
            </div>
 

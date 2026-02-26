@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/services/supabaseClient';
-import { Loader2, Trash2, Edit, Save, X, Search } from 'lucide-react';
+import { Loader2, Trash2, Edit, Save, X, Search, UserPlus, Settings as SettingsIcon, Users } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 interface UserData {
@@ -18,10 +18,70 @@ export default function AdminDashboard() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<UserData>>({});
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ full_name: '', email: '', password: '' });
+  const [activeTab, setActiveTab] = useState<'users' | 'settings'>('users');
+  const [subscriptionLink, setSubscriptionLink] = useState('https://s.id/alimkadigital');
+
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => {
     fetchUsers();
+    checkCurrentUserRole();
+    fetchSettings();
   }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'subscription_link')
+        .maybeSingle();
+      
+      if (data && !error) {
+        setSubscriptionLink(data.value);
+      } else {
+        const localLink = localStorage.getItem('subscription_link');
+        if (localLink) setSubscriptionLink(localLink);
+      }
+    } catch (err) {
+      // Ignore
+    }
+  };
+
+  const saveSettings = async () => {
+    try {
+      // Try to save to Supabase
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({ key: 'subscription_link', value: subscriptionLink }, { onConflict: 'key' });
+      
+      if (error) {
+        console.warn("Could not save to DB, saving to localStorage instead", error);
+      }
+      
+      // Always save to localStorage as fallback
+      localStorage.setItem('subscription_link', subscriptionLink);
+      
+      Swal.fire('Berhasil', 'Pengaturan berhasil disimpan', 'success');
+    } catch (err: any) {
+      localStorage.setItem('subscription_link', subscriptionLink);
+      Swal.fire('Berhasil', 'Pengaturan disimpan secara lokal (Database belum mendukung)', 'success');
+    }
+  };
+
+  const checkCurrentUserRole = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, email')
+        .eq('id', user.id)
+        .single();
+      setDebugInfo({ authEmail: user.email, profileRole: profile?.role, profileEmail: profile?.email });
+    }
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -143,6 +203,58 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAddUser = async () => {
+    if (!newUserForm.email || !newUserForm.password || !newUserForm.full_name) {
+      Swal.fire('Error', 'Please fill in all fields', 'error');
+      return;
+    }
+
+    try {
+      // 1. Sign up the user (this will create auth user and profile via trigger if set up, or we manually create profile)
+      // Note: In a real admin panel, we'd use service role key to create user without signing in.
+      // Here, we can't easily create an auth user without logging out the admin.
+      // So we will simulate it by creating a profile entry, but warn about Auth limitation.
+      
+      const { data, error } = await supabase.auth.signUp({
+        email: newUserForm.email,
+        password: newUserForm.password,
+        options: {
+          data: {
+            full_name: newUserForm.full_name,
+            role: 'user'
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.user) {
+         // Upsert profile to avoid duplicates
+         const { error: upsertError } = await supabase.from('profiles').upsert({
+             id: data.user.id,
+             email: newUserForm.email,
+             full_name: newUserForm.full_name,
+             role: 'user',
+             password_text: newUserForm.password
+         }, { onConflict: 'id' });
+
+         if (upsertError) {
+             console.error("Error upserting profile:", upsertError);
+             Swal.fire('Warning', 'User created in Auth, but failed to create profile: ' + upsertError.message, 'warning');
+         } else {
+             Swal.fire('Success', 'User created successfully! (Note: You might need to verify email if enabled)', 'success');
+         }
+
+         setIsAddingUser(false);
+         setNewUserForm({ full_name: '', email: '', password: '' });
+         fetchUsers();
+      }
+
+    } catch (error: any) {
+      Swal.fire('Error', error.message, 'error');
+    }
+  };
+
   const filteredUsers = users.filter(user => 
     user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -153,27 +265,145 @@ export default function AdminDashboard() {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-50 h-full overflow-hidden font-sans">
       <div className="flex-none px-8 py-8">
-        <div className="max-w-6xl mx-auto w-full flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Halaman Admin</h2>
-            <p className="text-sm text-slate-500 mt-1">Kelola data pengguna dan pantau aktivitas.</p>
+        <div className="max-w-6xl mx-auto w-full flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Halaman Admin</h2>
+              <p className="text-sm text-slate-500 mt-1">Kelola data pengguna dan pengaturan aplikasi.</p>
+            </div>
           </div>
-          <div className="relative">
-             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-             <input 
-                type="text" 
-                placeholder="Cari pengguna..." 
-                className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none w-64"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-             />
+          
+          <div className="flex gap-4 border-b border-slate-200">
+            <button 
+              onClick={() => setActiveTab('users')}
+              className={`pb-3 px-2 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'users' ? 'border-royal-blue-600 text-royal-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              <Users size={18} />
+              Manajemen Pengguna
+            </button>
+            <button 
+              onClick={() => setActiveTab('settings')}
+              className={`pb-3 px-2 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'settings' ? 'border-royal-blue-600 text-royal-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              <SettingsIcon size={18} />
+              Pengaturan Aplikasi
+            </button>
           </div>
+          
+          {activeTab === 'users' && (
+            <div className="flex justify-between items-center">
+              <div className="relative">
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                 <input 
+                    type="text" 
+                    placeholder="Cari pengguna..." 
+                    className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none w-64"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                 />
+              </div>
+              <button 
+                onClick={() => setIsAddingUser(true)}
+                className="px-4 py-2 bg-royal-blue-600 hover:bg-royal-blue-700 text-white rounded-xl font-medium flex items-center gap-2 transition-colors shadow-sm"
+              >
+                <UserPlus size={18} />
+                Tambah User
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Add User Modal */}
+      {isAddingUser && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-slate-900">Tambah Pengguna Baru</h3>
+              <button onClick={() => setIsAddingUser(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none"
+                  value={newUserForm.full_name}
+                  onChange={(e) => setNewUserForm({...newUserForm, full_name: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                <input 
+                  type="email" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none"
+                  value={newUserForm.email}
+                  onChange={(e) => setNewUserForm({...newUserForm, email: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none"
+                  value={newUserForm.password}
+                  onChange={(e) => setNewUserForm({...newUserForm, password: e.target.value})}
+                />
+              </div>
+              
+              <div className="pt-4 flex gap-3">
+                <button 
+                  onClick={() => setIsAddingUser(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors"
+                >
+                  Batal
+                </button>
+                <button 
+                  onClick={handleAddUser}
+                  className="flex-1 py-2.5 bg-royal-blue-600 hover:bg-royal-blue-700 text-white font-medium rounded-xl transition-colors"
+                >
+                  Simpan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-8 pb-12 custom-scrollbar">
-        <div className="max-w-6xl mx-auto w-full bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <table className="w-full text-sm text-left">
+        <div className="max-w-6xl mx-auto w-full">
+          {activeTab === 'settings' ? (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 max-w-2xl">
+              <h3 className="text-lg font-bold text-slate-900 mb-6">Pengaturan Umum</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Link Langganan (Halaman Login)</label>
+                  <input 
+                    type="url" 
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none"
+                    value={subscriptionLink}
+                    onChange={(e) => setSubscriptionLink(e.target.value)}
+                    placeholder="https://s.id/alimkadigital"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Link ini akan digunakan pada tombol "Langganan Pakar Buat Soal" di halaman login.</p>
+                </div>
+                <div className="pt-4">
+                  <button 
+                    onClick={saveSettings}
+                    className="px-6 py-2.5 bg-royal-blue-600 hover:bg-royal-blue-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2"
+                  >
+                    <Save size={18} />
+                    Simpan Pengaturan
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4 w-16">No</th>
@@ -281,6 +511,8 @@ export default function AdminDashboard() {
               )}
             </tbody>
           </table>
+        </div>
+        )}
         </div>
       </div>
     </div>

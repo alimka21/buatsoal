@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/services/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
+import { useGeneratorStore } from '@/store/generatorStore';
 import { format, isToday, isYesterday } from 'date-fns';
 import { Loader2, Search, Filter, History as HistoryIcon, ArrowRight, RefreshCw, Edit, Trash2, FileText, ChevronDown } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -19,9 +20,10 @@ export default function History() {
 
   const fetchHistory = async () => {
     try {
+      // Optimize by NOT selecting result_json which can be very large
       const { data, error } = await supabase
         .from('generated_questions')
-        .select('*')
+        .select('id, created_at, input_payload_json, model_used, created_by')
         .eq('created_by', session?.user.id)
         .order('created_at', { ascending: false });
 
@@ -31,6 +33,32 @@ export default function History() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewDetail = async (id: string, inputPayload: any) => {
+    try {
+      Swal.fire({
+        title: 'Memuat Soal...',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('generated_questions')
+        .select('result_json')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+
+      useGeneratorStore.getState().setResult(data.result_json, inputPayload);
+      Swal.close();
+      navigate('/generator');
+    } catch (err) {
+      Swal.fire('Error', 'Gagal memuat detail soal.', 'error');
     }
   };
 
@@ -136,21 +164,24 @@ export default function History() {
                                                     Sukses
                                                 </span>
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                                                    {item.input_payload.subject || 'Umum'} - {item.input_payload.class_grade?.split('/')[0]}
+                                                    {item.input_payload_json?.subject || 'Umum'} - {item.input_payload_json?.class_grade?.split('/')[0]}
                                                 </span>
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-royal-blue-50 text-royal-blue-700">
-                                                    C{item.input_payload.cognitive_level}
+                                                    C{item.input_payload_json?.cognitive_level}
                                                 </span>
                                             </div>
-                                            <h4 className="text-base font-bold text-slate-900 truncate">{item.input_payload.topic}</h4>
-                                            <p className="text-sm text-slate-500 mt-1 line-clamp-1">{item.input_payload.learning_objectives}</p>
+                                            <h4 className="text-base font-bold text-slate-900 truncate">{item.input_payload_json?.topic}</h4>
+                                            <p className="text-sm text-slate-500 mt-1 line-clamp-1">{item.input_payload_json?.learning_objectives}</p>
                                         </div>
                                         <div className="flex-none flex items-center gap-3 w-full md:w-auto mt-4 md:mt-0 pt-4 md:pt-0 border-t border-slate-100 md:border-t-0">
                                             <button className="flex-1 md:flex-none px-4 py-2 text-sm font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors flex items-center justify-center gap-2 group">
                                                 <RefreshCw size={16} className="group-hover:rotate-180 transition-transform" />
                                                 Regenerate
                                             </button>
-                                            <button className="flex-1 md:flex-none px-4 py-2 text-sm font-bold text-white bg-royal-blue-600 hover:bg-royal-blue-700 rounded-xl transition-colors shadow-lg shadow-royal-blue-600/20 flex items-center justify-center gap-2">
+                                            <button 
+                                                onClick={() => handleViewDetail(item.id, item.input_payload_json)}
+                                                className="flex-1 md:flex-none px-4 py-2 text-sm font-bold text-white bg-royal-blue-600 hover:bg-royal-blue-700 rounded-xl transition-colors shadow-lg shadow-royal-blue-600/20 flex items-center justify-center gap-2"
+                                            >
                                                 Lihat Detail
                                                 <ArrowRight size={16} />
                                             </button>

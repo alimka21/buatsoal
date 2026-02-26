@@ -5,12 +5,13 @@ import { Loader2, UploadCloud, FileText, Edit3, CloudUpload, ChevronDown, Sparkl
 import { GenerateParams } from '@/services/questionService';
 import React, { useState, useCallback, useEffect } from 'react';
 import debounce from 'lodash.debounce';
+import Swal from 'sweetalert2';
 
 const formSchema = z.object({
   // Identitas
   jenjang: z.string().min(1, "Pilih jenjang"),
   fase: z.string().min(1, "Pilih fase"),
-  class_grade: z.string().min(1, "Isi kelas/semester"),
+  class_grade: z.string().min(1, "Pilih kelas"),
   subject: z.string().min(1, "Pilih mata pelajaran"),
   learning_objectives: z.string().min(5, "Isi tujuan pembelajaran"),
   
@@ -18,11 +19,10 @@ const formSchema = z.object({
   topic: z.string().min(3, "Topik wajib diisi"),
   source_type: z.enum(['no_material', 'upload_pdf', 'manual_input']),
   reference_text: z.string().optional(),
-  cognitive_level: z.number().min(1).max(6),
+  cognitive_level: z.coerce.number().min(1).max(6),
   question_type: z.enum(['multiple_choice', 'complex_multiple_choice', 'true_false', 'essay', 'short_answer', 'matching']),
-  count: z.number().min(1).max(20),
-  option_count: z.number().min(3).max(5).optional(),
-  generate_image: z.boolean(),
+  count: z.coerce.number().min(1).max(5),
+  option_count: z.coerce.number().min(3).max(5).optional(),
   
   apiKey: z.string().optional(),
 });
@@ -43,19 +43,31 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
     resolver: zodResolver(formSchema),
     defaultValues: {
       jenjang: 'SMA/MA',
-      fase: 'Fase E (X)',
-      class_grade: 'X / Ganjil',
+      fase: 'Fase E',
+      class_grade: 'Kelas 10',
       subject: 'Biologi',
-      source_type: 'upload_pdf',
+      source_type: 'no_material',
       cognitive_level: 4,
       question_type: 'multiple_choice',
       count: 5,
       option_count: 5,
-      generate_image: false,
       topic: '',
       learning_objectives: ''
     }
   });
+
+  const onError = (errors: any) => {
+    const errorMessages = Object.values(errors)
+      .map((err: any) => err.message)
+      .join('\n');
+    
+    Swal.fire({
+      icon: 'warning',
+      title: 'Formulir Belum Lengkap',
+      text: errorMessages || 'Mohon lengkapi semua field yang wajib diisi.',
+      confirmButtonColor: '#2563eb'
+    });
+  };
 
   const watchedValues = watch();
   const watchedJenjang = watch('jenjang');
@@ -131,23 +143,44 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
     ]
   };
 
+  // Data Kelas berdasarkan Fase
+  const CLASSES_BY_FASE: Record<string, string[]> = {
+    'Fase A': ['Kelas 1', 'Kelas 2'],
+    'Fase B': ['Kelas 3', 'Kelas 4'],
+    'Fase C': ['Kelas 5', 'Kelas 6'],
+    'Fase D': ['Kelas 7', 'Kelas 8', 'Kelas 9'],
+    'Fase E': ['Kelas 10'],
+    'Fase F': ['Kelas 11', 'Kelas 12'],
+  };
+
   // Automation Logic
   useEffect(() => {
     if (watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') {
       // If Fase is not E or F, default to E
-      if (watchedFase !== 'Fase E (X)' && watchedFase !== 'Fase F (XI-XII)') {
-         setValue('fase', 'Fase E (X)');
+      if (watchedFase !== 'Fase E' && watchedFase !== 'Fase F') {
+         setValue('fase', 'Fase E');
       }
+    } else if (watchedJenjang === 'SMP/MTs') {
+        if (watchedFase !== 'Fase D') {
+            setValue('fase', 'Fase D');
+        }
+    } else if (watchedJenjang === 'SD/MI') {
+        if (!['Fase A', 'Fase B', 'Fase C'].includes(watchedFase)) {
+            setValue('fase', 'Fase A');
+        }
     }
-  }, [watchedJenjang, setValue]);
+  }, [watchedJenjang, setValue, watchedFase]);
 
   useEffect(() => {
-    if (watchedFase === 'Fase E (X)') {
-        setValue('class_grade', 'X / Ganjil');
-    } else if (watchedFase === 'Fase F (XI-XII)') {
-        setValue('class_grade', 'XI / Ganjil');
+    // Reset class when fase changes if current class is not valid for new fase
+    if (watchedFase && CLASSES_BY_FASE[watchedFase]) {
+        const availableClasses = CLASSES_BY_FASE[watchedFase];
+        const currentClass = watch('class_grade');
+        if (!availableClasses.includes(currentClass)) {
+            setValue('class_grade', availableClasses[0]);
+        }
     }
-  }, [watchedFase, setValue]);
+  }, [watchedFase, setValue, watch]);
 
   // Notify parent of changes for Live Preview
   useEffect(() => {
@@ -162,8 +195,8 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
     setFileName(null);
     
     if (file) {
-      if (file.size > 10 * 1024 * 1024) { // 10MB
-        setFileError("File size must be less than 10MB");
+      if (file.size > 5 * 1024 * 1024) { // 5MB
+        setFileError("File size must be less than 5MB");
         e.target.value = ''; 
         return;
       }
@@ -209,7 +242,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-        <form id="generator-form" onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+        <form id="generator-form" onSubmit={handleSubmit(onSubmit, onError)} className="space-y-8">
           
           {/* SECTION 1: IDENTITAS */}
           <div className="space-y-5">
@@ -238,12 +271,33 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
                 <div className="relative">
                   <select {...register('fase')} className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all">
                     <option value="">Pilih Fase</option>
-                    <option value="Fase A (I-II)">Fase A (I-II)</option>
-                    <option value="Fase B (III-IV)">Fase B (III-IV)</option>
-                    <option value="Fase C (V-VI)">Fase C (V-VI)</option>
-                    <option value="Fase D (VII-IX)">Fase D (VII-IX)</option>
-                    <option value="Fase E (X)">Fase E (X)</option>
-                    <option value="Fase F (XI-XII)">Fase F (XI-XII)</option>
+                    {/* Render options based on Jenjang */}
+                    {(watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') ? (
+                        <>
+                            <option value="Fase E">Fase E</option>
+                            <option value="Fase F">Fase F</option>
+                        </>
+                    ) : watchedJenjang === 'SMP/MTs' ? (
+                        <>
+                            <option value="Fase D">Fase D</option>
+                        </>
+                    ) : watchedJenjang === 'SD/MI' ? (
+                        <>
+                            <option value="Fase A">Fase A</option>
+                            <option value="Fase B">Fase B</option>
+                            <option value="Fase C">Fase C</option>
+                        </>
+                    ) : (
+                        // Default fallback
+                        <>
+                            <option value="Fase A">Fase A</option>
+                            <option value="Fase B">Fase B</option>
+                            <option value="Fase C">Fase C</option>
+                            <option value="Fase D">Fase D</option>
+                            <option value="Fase E">Fase E</option>
+                            <option value="Fase F">Fase F</option>
+                        </>
+                    )}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
                 </div>
@@ -252,12 +306,20 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">Kelas / Semester</label>
-              <input 
-                {...register('class_grade')}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all placeholder:text-slate-400"
-                placeholder="Contoh: 10 / Ganjil"
-              />
+              <label className="block text-xs font-semibold text-slate-700">Kelas</label>
+              <div className="relative">
+                  <select 
+                    {...register('class_grade')}
+                    className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all"
+                    disabled={!watchedFase}
+                  >
+                    <option value="">Pilih Kelas</option>
+                    {watchedFase && CLASSES_BY_FASE[watchedFase]?.map((cls) => (
+                        <option key={cls} value={cls}>{cls}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
+              </div>
               {errors.class_grade && <p className="text-red-500 text-[10px]">{errors.class_grade.message}</p>}
             </div>
 
@@ -355,26 +417,34 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
               )}
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-700">Level Kognitif</label>
-                <span className="text-[10px] font-bold px-2 py-0.5 bg-royal-blue-50 text-royal-blue-700 rounded-md border border-royal-blue-100">
-                  {cognitiveLevels.find(c => c.val === watchedValues.cognitive_level)?.label} - {cognitiveLevels.find(c => c.val === watchedValues.cognitive_level)?.desc}
-                </span>
+                <div className="relative">
+                  <select 
+                    {...register('cognitive_level', { valueAsNumber: true })}
+                    className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all"
+                  >
+                    {cognitiveLevels.map((c) => (
+                      <option key={c.val} value={c.val}>{c.label} - {c.desc}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
+                </div>
               </div>
-              <div className="px-1">
-                <input 
-                  type="range" 
-                  min="1" 
-                  max="6" 
-                  step="1"
-                  {...register('cognitive_level', { valueAsNumber: true })}
-                  className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-royal-blue-600"
-                />
-                <div className="flex justify-between mt-2 text-[10px] font-medium text-slate-400">
-                  {cognitiveLevels.map((c) => (
-                    <span key={c.val} className={watchedValues.cognitive_level === c.val ? 'text-royal-blue-600 font-bold' : ''}>{c.label}</span>
-                  ))}
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700">Jumlah Soal</label>
+                <div className="relative">
+                    <select
+                      {...register('count', { valueAsNumber: true })}
+                      className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all"
+                    >
+                      {Array.from({ length: 5 }, (_, i) => i + 1).map((num) => (
+                          <option key={num} value={num}>{num}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
                 </div>
               </div>
             </div>
@@ -426,39 +496,22 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">Jumlah Soal</label>
-              <input 
-                type="number"
-                {...register('count', { valueAsNumber: true })}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all"
-                min={1} max={20}
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="space-y-0.5">
-                <label className="block text-xs font-semibold text-slate-700">Generate Gambar AI</label>
-                <p className="text-[10px] text-slate-500">Sertakan ilustrasi/grafik pada soal</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" {...register('generate_image')} className="sr-only peer" />
-                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-royal-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-royal-blue-600"></div>
-              </label>
-            </div>
           </div>
         </form>
       </div>
 
       <div className="p-6 border-t border-slate-200 bg-white z-20">
         <button
-          onClick={handleSubmit(onSubmit)}
+          onClick={handleSubmit(onSubmit, onError)}
           disabled={isLoading}
           className="w-full py-3.5 bg-royal-blue-600 hover:bg-royal-blue-700 text-white font-bold rounded-xl shadow-lg shadow-royal-blue-600/20 transition-all transform active:scale-[0.98] flex items-center justify-center gap-2 text-sm disabled:opacity-70"
         >
           {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />}
-          Generate Soal
+          Tambah ke Keranjang
         </button>
+        <p className="text-[10px] text-slate-500 text-center mt-3 leading-relaxed">
+          Sistem dirancang untuk menjaga kualitas berbasis rubric dan analisis HOTS mendalam. Oleh karena itu jumlah soal dibatasi per generate.
+        </p>
       </div>
     </div>
   );

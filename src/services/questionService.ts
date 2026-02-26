@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
-import { generateContentWithRetry, GENERATION_MODEL } from './aiService';
 import { generateHash } from './hashService';
+import { generateQuestionsOrchestrator } from './ai/aiOrchestrator';
+import { GENERATION_MODEL } from './aiService'; // Still need this for logging model used, or update it
 
 export interface GenerateParams {
   // Identitas Pembelajaran
@@ -18,7 +19,6 @@ export interface GenerateParams {
   question_type: 'multiple_choice' | 'complex_multiple_choice' | 'true_false' | 'essay' | 'short_answer' | 'matching';
   count: number;
   option_count?: number; // 3, 4, or 5
-  generate_image?: boolean;
   
   // Legacy/Optional/System
   difficulty?: string; // Derived from cognitive level or explicit
@@ -54,50 +54,9 @@ export const generateQuestions = async (userId: string, params: GenerateParams) 
     };
   }
 
-  // 2. Call AI Service
+  // 2. Call AI Orchestrator
   try {
-    // Map cognitive level to string description
-    const cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
-    const cognitiveStr = cognitiveMap[params.cognitive_level - 1] || "C4 (Menganalisis)";
-
-    const prompt = `
-      Role: Expert Teacher & Curriculum Designer.
-      Task: Create ${params.count} HOTS (Higher Order Thinking Skills) questions.
-      
-      Context:
-      - Level: ${params.jenjang}
-      - Phase: ${params.fase}
-      - Class/Semester: ${params.class_grade}
-      - Subject: ${params.subject}
-      - Topic: ${params.topic}
-      - Learning Objectives: ${params.learning_objectives}
-      - Cognitive Level: ${cognitiveStr}
-      - Question Type: ${params.question_type}
-      ${params.generate_image ? '- Requirement: Include relevant image/graph/table descriptions for questions where applicable.' : ''}
-      
-      ${params.source_type !== 'no_material' && params.reference_text ? `Reference Material: "${params.reference_text}"` : ''}
-      ${params.additional_instructions ? `Additional Instructions: ${params.additional_instructions}` : ''}
-      
-      Output strictly in JSON format.
-      Schema:
-      {
-        "subject": "${params.subject}",
-        "topic": "${params.topic}",
-        "questions": [
-          {
-            "id": 1,
-            "question": "...",
-            "stimulus": "...", // Context/Case study/Intro text if needed
-            "image_description": "...", // If generate_image is true, describe the image/graph needed here.
-            "options": ["A", "B", "C", "D", "E"], // For multiple_choice (${params.option_count || 5} options), complex_multiple_choice (${params.option_count || 5} options), or true_false (["Benar", "Salah"])
-            "correct_answer": "...", // For complex_multiple_choice, use comma separated values (e.g., "A, C"). For true_false, use "Benar" or "Salah".
-            "explanation": "..."
-          }
-        ]
-      }
-    `;
-
-    const { result: resultJson, retries } = await generateContentWithRetry(prompt, params.apiKey);
+    const { result: resultJson, retries } = await generateQuestionsOrchestrator(params, params.apiKey);
 
     // 3. Save to DB (Atomic Insert with Conflict Handling)
     const { data: savedData, error: saveError } = await supabase
@@ -108,7 +67,7 @@ export const generateQuestions = async (userId: string, params: GenerateParams) 
         input_payload_json: params,
         reference_text: params.reference_text,
         result_json: resultJson,
-        model_used: GENERATION_MODEL
+        model_used: GENERATION_MODEL // Or update to reflect multi-model usage
       })
       .select()
       .single();
