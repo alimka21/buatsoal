@@ -19,7 +19,7 @@ export default function AdminDashboard() {
   const [editForm, setEditForm] = useState<Partial<UserData>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddingUser, setIsAddingUser] = useState(false);
-  const [newUserForm, setNewUserForm] = useState({ full_name: '', email: '', password: '' });
+  const [newUserForm, setNewUserForm] = useState({ full_name: '', email: '', password: '123456' });
   const [activeTab, setActiveTab] = useState<'users' | 'settings'>('users');
   const [subscriptionLink, setSubscriptionLink] = useState('https://s.id/alimkadigital');
 
@@ -210,45 +210,29 @@ export default function AdminDashboard() {
     }
 
     try {
-      // 1. Sign up the user (this will create auth user and profile via trigger if set up, or we manually create profile)
-      // Note: In a real admin panel, we'd use service role key to create user without signing in.
-      // Here, we can't easily create an auth user without logging out the admin.
-      // So we will simulate it by creating a profile entry, but warn about Auth limitation.
-      
-      const { data, error } = await supabase.auth.signUp({
-        email: newUserForm.email,
-        password: newUserForm.password,
-        options: {
-          data: {
-            full_name: newUserForm.full_name,
-            role: 'user'
-          }
-        }
+      // Use backend API to create user (avoids logging out admin and bypasses RLS)
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: newUserForm.email,
+          password: newUserForm.password,
+          full_name: newUserForm.full_name,
+        }),
       });
 
-      if (error) throw error;
+      const data = await response.json();
 
-      if (data.user) {
-         // Upsert profile to avoid duplicates
-         const { error: upsertError } = await supabase.from('profiles').upsert({
-             id: data.user.id,
-             email: newUserForm.email,
-             full_name: newUserForm.full_name,
-             role: 'user',
-             password_text: newUserForm.password
-         }, { onConflict: 'id' });
-
-         if (upsertError) {
-             console.error("Error upserting profile:", upsertError);
-             Swal.fire('Warning', 'User created in Auth, but failed to create profile: ' + upsertError.message, 'warning');
-         } else {
-             Swal.fire('Success', 'User created successfully! (Note: You might need to verify email if enabled)', 'success');
-         }
-
-         setIsAddingUser(false);
-         setNewUserForm({ full_name: '', email: '', password: '' });
-         fetchUsers();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create user');
       }
+
+      Swal.fire('Success', 'User created successfully!', 'success');
+      setIsAddingUser(false);
+      setNewUserForm({ full_name: '', email: '', password: '123456' });
+      fetchUsers();
 
     } catch (error: any) {
       Swal.fire('Error', error.message, 'error');
@@ -256,8 +240,8 @@ export default function AdminDashboard() {
   };
 
   const filteredUsers = users.filter(user => 
-    user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (user.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-royal-blue-600" /></div>;

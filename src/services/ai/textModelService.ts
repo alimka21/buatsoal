@@ -4,13 +4,56 @@ import { GenerateParams } from '../questionService';
 const TEXT_MODEL = "gemini-2.5-flash";
 const MAX_RETRIES = 2;
 
+function cleanAndParseJSON(jsonString: string): any {
+  // 1. Remove Markdown code blocks
+  let cleaned = jsonString.replace(/```json\n?|\n?```/g, "").trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.warn("JSON parse failed, attempting to sanitize LaTeX backslashes...", e);
+    
+    // 2. Try to fix common LaTeX escape issues
+    // The error "Bad escaped character" happens when a backslash is followed by an invalid escape char.
+    // We want to escape backslashes that are likely part of LaTeX commands but not valid JSON escapes.
+    // Valid JSON escapes: " \ / b f n r t u
+    // We will double-escape backslashes that are followed by a character that is NOT a valid escape.
+    
+    // Regex explanation:
+    // \\        Match a single backslash
+    // (?!       Negative lookahead (not followed by...)
+    //   ["\\/bfnrtu]  Any of the valid escape characters
+    // )
+    const sanitized = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+    
+    try {
+      return JSON.parse(sanitized);
+    } catch (e2) {
+       // If that fails, try a more aggressive approach: escape ALL backslashes that aren't already escaped?
+       // No, that might break valid escapes like \n.
+       // Let's try one more fallback: if the error is specifically about bad escapes, 
+       // maybe we just double escape ALL backslashes if the previous attempt failed? 
+       // But that turns \n into \\n (literal \n), which might be okay for text content.
+       
+       // Let's stick to the first sanitization for now, as it targets the specific "Bad escaped character" cause.
+       console.error("Failed to parse sanitized JSON", sanitized.substring(0, 200) + "...");
+       throw e; // Throw original error to trigger retry logic
+    }
+  }
+}
+
 export const generateTextQuestions = async (params: GenerateParams, apiKey?: string, retries = 0): Promise<{ result: any; retries: number }> => {
   try {
     const ai = getGeminiClient(apiKey);
     
     // Map cognitive level to string description
     const cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
-    const cognitiveStr = cognitiveMap[params.cognitive_level - 1] || "C4 (Menganalisis)";
+    let cognitiveStr = "";
+    if (Array.isArray(params.cognitive_level)) {
+        cognitiveStr = params.cognitive_level.map((level: number) => cognitiveMap[level - 1]).join(", ");
+    } else {
+        cognitiveStr = cognitiveMap[params.cognitive_level - 1] || "C4 (Menganalisis)";
+    }
 
     const prompt = `
       Role: Expert Teacher & Curriculum Designer.
@@ -21,14 +64,19 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - Phase: ${params.fase}
       - Class: ${params.class_grade}
       - Subject: ${params.subject}
-      - Topic: ${params.topic}
-      - Learning Objectives: ${params.learning_objectives}
+      - Topics: ${Array.isArray(params.topic) ? params.topic.join(", ") : params.topic}
+      - Learning Objectives: ${Array.isArray(params.learning_objectives) ? params.learning_objectives.join(", ") : params.learning_objectives}
       - Cognitive Level: ${cognitiveStr}
-      - Question Type: ${params.question_type}
+      - Question Types: ${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}
       
       IMPORTANT: Adjust the complexity of the questions and language based strictly on the "Level" (Jenjang) and "Class" (Kelas). 
       For example, Grade 1 SD questions must be very simple and concrete, while SMA questions should be more complex and abstract.
       
+      DISTRIBUTION INSTRUCTIONS:
+      1. Distribute the ${params.count} questions evenly across the provided Topics and Learning Objectives.
+      2. Distribute the questions across the requested Question Types (${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}).
+      3. RANDOMIZE the correct answer positions (A, B, C, D, E) evenly. Do not default to 'A' or 'B'.
+
       ${params.source_type !== 'no_material' && params.reference_text ? `Reference Material: "${params.reference_text}"` : ''}
       ${params.additional_instructions ? `Additional Instructions: ${params.additional_instructions}` : ''}
 
@@ -42,11 +90,27 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       6. Clear Language: Use clear, economical, and grade-appropriate language.
       7. Understanding over Rote: Test for deep understanding, not just memorization (except for C1).
 
+      MATH FORMULAS:
+      - Use LaTeX ONLY for complex mathematical expressions (fractions, roots, integrals, powers, limits, matrices, etc.).
+      - Wrap inline formulas in single dollar signs, e.g., $E=mc^2$.
+      - Wrap block formulas in double dollar signs, e.g., $$x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$$.
+      - IMPORTANT: You MUST escape all backslashes in LaTeX commands for JSON compatibility. Use "\\frac" instead of "\frac", "\\sqrt" instead of "\sqrt", etc.
+      - DO NOT use LaTeX for simple arithmetic or text (e.g., write "2 + 2 = 4", not "$2 + 2 = 4$").
+      - DO NOT auto-format simple variables like "x" or "y" unless part of a larger equation.
+
       STIMULUS STRUCTURE:
       - Must include a context/case/data/text/situation (2-4 sentences minimum, except for lower grades).
       - Must be relevant to students' lives.
       - Must contain information that students need to analyze to answer the question.
       - For Higher Levels (C4+): Stimulus must include data, a problem to solve, or trigger reasoning.
+      - LONG READING PASSAGES: For subjects like Bahasa Indonesia, English, IPS, PPKN, etc., provide longer reading passages (texts, poems, news, etc.) as stimulus.
+      - MANDATORY PREFIX: If a reading passage is used, precede it with a clear instruction line, e.g., "Bacalah Pernyataan Berikut:", "Bacalah Pantun Berikut:", "Bacalah Berita Berikut:", etc.
+
+      QUESTION STEM RULES:
+      - Avoid ending the question stem with a direct question mark if possible. Use incomplete sentences or direct instructions.
+      - Example (Good): "Berdasarkan grafik tersebut, kesimpulan yang paling tepat mengenai pertumbuhan ekonomi adalah ..."
+      - Example (Bad): "Apa kesimpulan yang dapat diambil dari grafik tersebut?"
+      - Ensure the stem clearly directs the student to the answer without being conversational.
 
       BLOOM'S TAXONOMY RUBRIC:
       - C1: Recall facts (simple).
@@ -62,9 +126,10 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - No absurd or joke options.
 
       IMAGE PROMPT RULES:
-      - If a question would benefit from an illustration, diagram, or graph, provide a detailed description in "image_prompt".
-      - Must describe the object in detail so an image generator can create it.
-      - If no image is needed, leave it empty or null.
+      - STRICT RULE: ONLY generate an "image_prompt" if the question ABSOLUTELY REQUIRES visualization to be understood (e.g., geometry, biology diagrams, physics setups).
+      - DO NOT generate images for algebra, arithmetic, simple equations, or text-based questions.
+      - If the question can be understood without a visual, set "image_prompt" to null or empty string.
+      - If an image is needed, describe the object in detail so an image generator can create it.
 
       SELF-VALIDATION (Internal Step):
       - Verify Bloom's level match.
@@ -77,7 +142,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       Schema:
       {
         "subject": "${params.subject}",
-        "topic": "${params.topic}",
+        "topic": "${Array.isArray(params.topic) ? params.topic[0] : params.topic}", // Primary topic
         "questions": [
           {
             "id": 1,
@@ -86,7 +151,11 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
             "image_prompt": "...", // Detailed prompt for an image generator if the question needs an illustration (optional)
             "options": ["A", "B", "C", "D", "E"], // For multiple_choice (${params.option_count || 5} options), complex_multiple_choice (${params.option_count || 5} options), or true_false (["Benar", "Salah"])
             "correct_answer": "...", // For complex_multiple_choice, use comma separated values (e.g., "A, C"). For true_false, use "Benar" or "Salah".
-            "explanation": "..."
+            "explanation": "...",
+            "_type": "multiple_choice", // The specific type of this question from the requested types
+            "_topic": "...", // The specific topic this question covers from the provided list
+            "_learning_objective": "...", // The specific learning objective this question addresses
+            "_cognitive_level": 4 // The specific cognitive level (number) of this question (e.g., 3, 4, 5)
           }
         ]
       }
@@ -163,7 +232,7 @@ OUTPUT JSON SCHEMA:
       const refineEvalText = refineEvalResponse.text;
       if (!refineEvalText) throw new Error("No response from Gemini during refinement/evaluation");
       
-      const result = JSON.parse(refineEvalText);
+      const result = cleanAndParseJSON(refineEvalText);
       console.log(`Iteration ${iteration + 1} Score: ${result.score}/30`);
       console.log(`Analysis: ${result.analysis}`);
 
@@ -186,7 +255,7 @@ OUTPUT JSON SCHEMA:
     }
 
     console.log("Max refinements reached, returning current draft.");
-    return { result: JSON.parse(currentDraftText), retries: totalRetries };
+    return { result: cleanAndParseJSON(currentDraftText), retries: totalRetries };
 
   } catch (error: any) {
     // Error Normalization

@@ -9,11 +9,17 @@ import Swal from 'sweetalert2';
 export default function Generator() {
   useFirstLogin();
   const { session } = useAuthStore();
-  const { isGenerating, result, error, cacheHit, addToCart, formData, setFormData } = useGeneratorStore();
+  const { isGenerating, result, error, cacheHit, generate, formData, setFormData, reset } = useGeneratorStore();
+  const [formKey, setFormKey] = useState(0);
 
-  const handleAddToCart = (data: any) => {
+  const handleReset = () => {
+    reset();
+    setFormKey(prev => prev + 1);
+  };
+
+  const handleGenerate = (data: any) => {
     if (session?.user.id) {
-      addToCart(data);
+      generate(session.user.id, data);
     } else {
       Swal.fire({
         icon: 'error',
@@ -29,7 +35,8 @@ export default function Generator() {
       {/* Left Sidebar Form */}
       <div className="w-[400px] xl:w-[450px] flex-none z-20 h-full border-r border-slate-200 bg-white">
         <GeneratorForm 
-          onSubmit={handleAddToCart} 
+          key={formKey}
+          onSubmit={handleGenerate} 
           isLoading={isGenerating} 
           onValuesChange={setFormData}
         />
@@ -43,6 +50,7 @@ export default function Generator() {
           isLoading={isGenerating} 
           error={error} 
           formData={formData}
+          onReset={handleReset}
         />
       </div>
     </div>

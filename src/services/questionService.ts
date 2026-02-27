@@ -9,14 +9,15 @@ export interface GenerateParams {
   fase: string;
   class_grade: string; // Kelas / Semester
   subject: string; // Mata Pelajaran
-  learning_objectives: string; // Tujuan Pembelajaran
   
   // Konfigurasi Soal
-  topic: string;
+  learning_objectives: string[]; // Tujuan Pembelajaran (Array)
+  topic: string[]; // Topik (Array)
+  
   source_type: 'no_material' | 'upload_pdf' | 'manual_input';
   reference_text?: string; // For manual input or extracted PDF text
-  cognitive_level: number; // 1-6 (C1-C6)
-  question_type: 'multiple_choice' | 'complex_multiple_choice' | 'true_false' | 'essay' | 'short_answer' | 'matching';
+  cognitive_level: number | number[]; // 1-6 (C1-C6)
+  question_type: string[]; // Array of types
   count: number;
   option_count?: number; // 3, 4, or 5
   

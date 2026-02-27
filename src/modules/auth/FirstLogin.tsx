@@ -9,11 +9,11 @@ import { Loader2 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const firstLoginSchema = z.object({
-  fullName: z.string().min(2, "Name is required"),
-  newPassword: z.string().min(6, "Password must be at least 6 characters"),
+  fullName: z.string().min(2, "Nama wajib diisi"),
+  newPassword: z.string().min(6, "Password minimal 6 karakter"),
   confirmPassword: z.string(),
 }).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "Passwords don't match",
+  message: "Password tidak cocok",
   path: ["confirmPassword"],
 });
 
@@ -55,8 +55,8 @@ export default function FirstLogin() {
       
       Swal.fire({
         icon: 'success',
-        title: 'Account Setup Complete',
-        text: 'Welcome aboard! Redirecting to dashboard...',
+        title: 'Pengaturan Akun Selesai',
+        text: 'Selamat datang! Mengalihkan ke dashboard...',
         timer: 2000,
         showConfirmButton: false
       });
@@ -65,8 +65,8 @@ export default function FirstLogin() {
     } catch (err: any) {
       Swal.fire({
         icon: 'error',
-        title: 'Setup Failed',
-        text: err.message || 'Failed to update profile',
+        title: 'Gagal Mengatur Akun',
+        text: err.message || 'Gagal memperbarui profil',
         confirmButtonColor: '#2563eb',
       });
     } finally {
@@ -78,13 +78,13 @@ export default function FirstLogin() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 font-sans">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
         <div className="text-center">
-          <h2 className="mt-6 text-3xl font-bold text-slate-900 tracking-tight">Welcome!</h2>
-          <p className="mt-2 text-sm text-slate-600">Please set up your account to continue.</p>
+          <h2 className="mt-6 text-3xl font-bold text-slate-900 tracking-tight">Aktivasi Akun</h2>
+          <p className="mt-2 text-sm text-slate-600">Silakan lengkapi data akun Anda untuk melanjutkan.</p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
               <input
                 type="text"
                 className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-royal-blue-500 focus:border-transparent sm:text-sm transition-all duration-200"
@@ -93,7 +93,7 @@ export default function FirstLogin() {
               {errors.fullName && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.fullName.message}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Password Baru</label>
               <input
                 type="password"
                 className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-royal-blue-500 focus:border-transparent sm:text-sm transition-all duration-200"
@@ -102,7 +102,7 @@ export default function FirstLogin() {
               {errors.newPassword && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.newPassword.message}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Konfirmasi Password</label>
               <input
                 type="password"
                 className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-royal-blue-500 focus:border-transparent sm:text-sm transition-all duration-200"
@@ -118,7 +118,7 @@ export default function FirstLogin() {
               disabled={isLoading}
               className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-royal-blue-600 hover:bg-royal-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-royal-blue-500 disabled:opacity-70 disabled:cursor-not-allowed shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98]"
             >
-              {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Save & Continue'}
+              {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Simpan & Lanjutkan'}
             </button>
           </div>
         </form>

@@ -7,6 +7,8 @@ import { saveAs } from 'file-saver';
 import { useGeneratorStore } from '@/store/generatorStore';
 import { useAuthStore } from '@/store/authStore';
 import { generateImage } from '@/services/ai/imageModelService';
+import 'katex/dist/katex.min.css';
+import Latex from 'react-latex-next';
 
 interface ResultViewerProps {
   result: any;
@@ -14,18 +16,24 @@ interface ResultViewerProps {
   isLoading: boolean;
   error: string | null;
   formData: any; // To show header info
+  onReset?: () => void;
 }
 
-export default function ResultViewer({ result, cached, isLoading, error, formData }: ResultViewerProps) {
+export default function ResultViewer({ result, cached, isLoading, error, formData, onReset }: ResultViewerProps) {
   const [activeTab, setActiveTab] = useState<'questions' | 'answers' | 'matrix'>('questions');
   const [imageStates, setImageStates] = useState<Record<string, { status: 'idle' | 'loading' | 'done' | 'error', base64?: string, visible: boolean }>>({});
-  const { cart, removeFromCart, clearCart, generateBatch, progress } = useGeneratorStore();
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const { generate, progress } = useGeneratorStore();
   const { session } = useAuthStore();
 
-  const handleGenerateBatch = () => {
-    if (session?.user.id) {
-      generateBatch(session.user.id);
-    }
+  const handleResetClick = () => {
+    setIsResetting(true);
+    setTimeout(() => {
+      if (onReset) onReset();
+      else useGeneratorStore.getState().reset();
+      setIsResetting(false);
+    }, 600);
   };
 
   const handleImageClick = async (questionText: string, imagePrompt: string) => {
@@ -78,80 +86,6 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
             style={{ width: `${progress}%` }}
           ></div>
         </div>
-
-        {/* Status per item */}
-        <div className="mt-8 w-full max-w-md space-y-2">
-          {cart.map((item, idx) => (
-            <div key={item.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-slate-200">
-              <span className="truncate flex-1 pr-2">Item {idx + 1}: {item.payload.topic}</span>
-              <span className={cn(
-                "px-2 py-1 rounded font-medium",
-                item.status === 'waiting' && "bg-slate-100 text-slate-500",
-                item.status === 'generating' && "bg-blue-100 text-blue-600 animate-pulse",
-                item.status === 'cached' && "bg-emerald-100 text-emerald-600",
-                item.status === 'done' && "bg-emerald-100 text-emerald-600",
-                item.status === 'failed' && "bg-red-100 text-red-600"
-              )}>
-                {item.status}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Cart View
-  if (!result && cart.length > 0) {
-    return (
-      <div className="h-full flex flex-col bg-slate-50 p-8">
-        <div className="max-w-3xl w-full mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Keranjang Soal</h2>
-              <p className="text-sm text-slate-500">Total {cart.reduce((acc, item) => acc + item.payload.count, 0)} soal dari {cart.length} konfigurasi.</p>
-            </div>
-            <button 
-              onClick={clearCart}
-              className="text-sm text-red-500 hover:text-red-600 font-medium flex items-center gap-1"
-            >
-              <Trash2 size={16} /> Kosongkan
-            </button>
-          </div>
-
-          <div className="space-y-4 mb-8">
-            {cart.map((item, idx) => (
-              <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-800">{item.payload.topic || 'Tanpa Topik'}</h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {item.payload.jenjang} - {item.payload.class_grade} • {item.payload.subject} • {item.payload.count} Soal {item.payload.question_type.replace('_', ' ')}
-                  </p>
-                </div>
-                <button 
-                  onClick={() => removeFromCart(item.id)}
-                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-royal-blue-50 border border-royal-blue-100 rounded-xl p-6 flex items-center justify-between">
-            <div>
-              <h4 className="font-bold text-royal-blue-900">Siap Generate?</h4>
-              <p className="text-sm text-royal-blue-700 mt-1">Sistem akan memproses semua konfigurasi secara berurutan.</p>
-            </div>
-            <button 
-              onClick={handleGenerateBatch}
-              className="px-6 py-3 bg-royal-blue-600 hover:bg-royal-blue-700 text-white font-bold rounded-xl shadow-lg shadow-royal-blue-600/20 transition-all transform active:scale-[0.98] flex items-center gap-2"
-            >
-              <Play size={18} />
-              Generate Semua
-            </button>
-          </div>
-        </div>
       </div>
     );
   }
@@ -163,9 +97,9 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
         <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm border border-slate-200">
           <FileText size={40} className="opacity-40 text-slate-500" />
         </div>
-        <h3 className="font-bold text-xl text-slate-700 mb-2">Keranjang Kosong</h3>
+        <h3 className="font-bold text-xl text-slate-700 mb-2">Belum Ada Soal</h3>
         <p className="text-sm text-slate-500 max-w-xs text-center">
-          Isi formulir di sebelah kiri dan klik "Tambah ke Keranjang" untuk mulai membuat soal.
+          Isi formulir di sebelah kiri dan klik "Buat Soal Sekarang" untuk mulai.
         </p>
       </div>
     );
@@ -183,9 +117,11 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
 
   const handleDownloadDocx = async () => {
     if (!result || !result.questions) return;
+    setIsDownloading(true);
 
-    const groupedQuestionsForDoc = result.questions.reduce((acc: any, q: any) => {
-      const type = q._type || formData?.question_type || 'multiple_choice';
+    try {
+      const groupedQuestionsForDoc = result.questions.reduce((acc: any, q: any) => {
+      const type = q._type || (Array.isArray(formData?.question_type) ? formData.question_type[0] : formData?.question_type) || 'multiple_choice';
       if (!acc[type]) acc[type] = [];
       acc[type].push(q);
       return acc;
@@ -204,14 +140,19 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
               new TextRun({
                 text: "DAFTAR SOAL",
                 bold: true,
-                size: 48, // 24pt
+                size: 24, // 12pt
               })
             ],
             alignment: AlignmentType.CENTER,
             spacing: { after: 200 },
           }),
           new Paragraph({
-            text: `Mata Pelajaran: ${result.subject || 'Biologi'}`,
+            children: [
+              new TextRun({
+                text: `Mata Pelajaran: ${result.subject || 'Biologi'}`,
+                size: 24, // 12pt
+              })
+            ],
             alignment: AlignmentType.CENTER,
             spacing: { after: 400 },
           }),
@@ -219,8 +160,14 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
           // Questions Section
           ...Object.entries(groupedQuestionsForDoc).flatMap(([type, questions]: [string, any]) => [
             new Paragraph({
-              text: `Bagian ${TYPE_LABELS[type] || type}`,
-              heading: HeadingLevel.HEADING_2,
+              children: [
+                new TextRun({
+                  text: `Bagian ${TYPE_LABELS[type] || type}`,
+                  bold: true,
+                  color: "000000",
+                  size: 24, // 12pt
+                })
+              ],
               spacing: { before: 300, after: 200 },
             }),
             ...questions.flatMap((q: any) => {
@@ -231,44 +178,113 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                     new TextRun({
                       text: `${globalQIndex}. ${q.question}`,
                       bold: true,
+                      size: 24, // 12pt
                     }),
                   ],
                   spacing: { before: 200, after: 100 },
                 }),
-                ...(q.image_base64 ? [
+                ...(imageStates[q.question]?.status === 'done' && imageStates[q.question]?.base64 ? [
                   new Paragraph({
                     children: [
                       new ImageRun({
-                        data: Uint8Array.from(atob(q.image_base64), c => c.charCodeAt(0)),
+                        data: Uint8Array.from(atob(imageStates[q.question].base64!), c => c.charCodeAt(0)),
                         transformation: {
                           width: 200,
                           height: 200,
                         },
+                        type: "png", // Explicitly set type to satisfy docx types
                       }),
                     ],
                     alignment: AlignmentType.CENTER,
                     spacing: { after: 100 },
                   })
-                ] : (q.image_prompt || q.image_description) ? [
-                  new Paragraph({
-                    children: [
-                      new TextRun({
-                        text: `[Ilustrasi: ${q.image_prompt || q.image_description}]`,
-                        italics: true,
-                        color: "666666"
-                      }),
-                    ],
-                    spacing: { after: 100 },
-                  })
                 ] : []),
-                ...(q.options ? q.options.map((opt: string, i: number) => {
+                ...(type === 'matching' ? [
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: "Soal Pengantar",
+                                size: 24, // 12pt
+                            })
+                        ],
+                        spacing: { after: 100 },
+                    }),
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        borders: {
+                            top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                            bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                            left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                            right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                            insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                            insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                        },
+                        rows: [
+                            new TableRow({
+                                children: [
+                                    new TableCell({
+                                        children: [new Paragraph({ children: [new TextRun({ text: "Pernyataan", bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
+                                        width: { size: 50, type: WidthType.PERCENTAGE },
+                                    }),
+                                    new TableCell({
+                                        children: [new Paragraph({ children: [new TextRun({ text: "Jawaban", bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
+                                        width: { size: 50, type: WidthType.PERCENTAGE },
+                                    }),
+                                ],
+                            }),
+                            ...(q.options ? q.options.map((opt: string, i: number) => 
+                                new TableRow({
+                                    children: [
+                                        new TableCell({
+                                            children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${opt.split(' - ')[0] || ''}`, size: 24 })] })], 
+                                        }),
+                                        new TableCell({
+                                            children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}.`, size: 24 })] })], 
+                                        }),
+                                    ],
+                                })
+                            ) : [
+                                new TableRow({
+                                    children: [
+                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })] })] }),
+                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })] })] }),
+                                    ],
+                                }),
+                                new TableRow({
+                                    children: [
+                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "2.", size: 24 })] })] }),
+                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "2.", size: 24 })] })] }),
+                                    ],
+                                }),
+                                new TableRow({
+                                    children: [
+                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "3.", size: 24 })] })] }),
+                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "3.", size: 24 })] })] }),
+                                    ],
+                                }),
+                            ]),
+                        ],
+                    })
+                ] : q.options ? q.options.map((opt: string, i: number) => {
                   const cleanOpt = opt.replace(/^[A-Ea-e][\.\)]\s*/, '');
                   let prefix = `${String.fromCharCode(65 + i)}. `;
-                  if (type === 'complex_multiple_choice') prefix = "[ ] ";
-                  if (type === 'true_false') prefix = "( ) ";
+                  if (type === 'complex_multiple_choice') prefix = "o "; // Circle bullet
+                  if (type === 'true_false') return new Paragraph({ // Horizontal true/false
+                      children: [
+                          new TextRun({ text: "( ) Benar", size: 24 }),
+                          new TextRun({ text: "\t\t\t", size: 24 }), // Tab spacing
+                          new TextRun({ text: "( ) Salah", size: 24 }),
+                      ],
+                      indent: { left: 720 },
+                  });
                   
                   return new Paragraph({
-                    text: `${prefix}${cleanOpt}`,
+                    children: [
+                        new TextRun({
+                            text: `${prefix}${cleanOpt}`,
+                            size: 24, // 12pt
+                        })
+                    ],
                     indent: { left: 720 }, // Indent options
                   });
                 }) : [
@@ -303,16 +319,27 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
 
           // Answer Key Section
           new Paragraph({
-            text: "KUNCI JAWABAN & PEMBAHASAN",
-            heading: HeadingLevel.HEADING_2,
+            children: [
+                new TextRun({
+                    text: "KUNCI JAWABAN & PEMBAHASAN",
+                    bold: true,
+                    size: 24, // 12pt
+                })
+            ],
             alignment: AlignmentType.CENTER,
             pageBreakBefore: true,
             spacing: { before: 400, after: 200 },
           }),
           ...Object.entries(groupedQuestionsForDoc).flatMap(([type, questions]: [string, any]) => [
             new Paragraph({
-              text: `Bagian ${TYPE_LABELS[type] || type}`,
-              heading: HeadingLevel.HEADING_3,
+              children: [
+                  new TextRun({
+                      text: `Bagian ${TYPE_LABELS[type] || type}`,
+                      bold: true,
+                      color: "000000",
+                      size: 24, // 12pt
+                  })
+              ],
               spacing: { before: 300, after: 200 },
             }),
             ...questions.flatMap((q: any) => {
@@ -323,6 +350,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                     new TextRun({
                       text: `${globalAIndex}. Jawaban: ${q.correct_answer}`,
                       bold: true,
+                      size: 24, // 12pt
                     }),
                   ],
                 }),
@@ -331,6 +359,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                     new TextRun({
                       text: `Pembahasan: ${q.explanation}`,
                       italics: true,
+                      size: 24, // 12pt
                     }),
                   ],
                   spacing: { after: 200 },
@@ -341,41 +370,69 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
 
           // Matrix (Kisi-Kisi) Section
           new Paragraph({
-            text: "KISI-KISI SOAL",
-            heading: HeadingLevel.HEADING_2,
+            children: [
+                new TextRun({
+                    text: "KISI-KISI SOAL",
+                    bold: true,
+                    size: 24, // 12pt
+                })
+            ],
             alignment: AlignmentType.CENTER,
             pageBreakBefore: true,
             spacing: { before: 400, after: 200 },
           }),
-          ...Object.entries(groupedQuestionsForDoc).flatMap(([type, questions]: [string, any]) => [
-            new Paragraph({
-              text: `Bagian ${TYPE_LABELS[type] || type}`,
-              heading: HeadingLevel.HEADING_3,
-              spacing: { before: 300, after: 200 },
-            }),
-            ...questions.flatMap((q: any) => {
-              globalMIndex++;
-              return [
-                new Paragraph({
-                  children: [
-                      new TextRun({ text: `Soal No. ${globalMIndex}`, bold: true }),
-                  ],
-                  spacing: { before: 100 }
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: {
+                top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+            },
+            rows: [
+                new TableRow({
+                    tableHeader: true,
+                    children: [
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "No", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Kompetensi Dasar / Tujuan", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 30, type: WidthType.PERCENTAGE } }),
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Materi", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 25, type: WidthType.PERCENTAGE } }),
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Level Kognitif", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 15, type: WidthType.PERCENTAGE } }),
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Bentuk Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 15, type: WidthType.PERCENTAGE } }),
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "No Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+                    ],
                 }),
-                new Paragraph({ text: `Tujuan: ${q._learning_objectives || formData?.learning_objectives || '-'}` }),
-                new Paragraph({ text: `Materi: ${q._topic || formData?.topic || '-'}` }),
-                new Paragraph({ text: `Level: L${Math.ceil((formData?.cognitive_level || 1)/2)} (C${formData?.cognitive_level})` }),
-                new Paragraph({ text: `Bentuk: ${TYPE_LABELS[type] || type}` }),
-                new Paragraph({ text: "" })
-              ];
-            })
-          ]),
+                ...Object.entries(groupedQuestionsForDoc).flatMap(([type, questions]: [string, any]) => 
+                    questions.map((q: any) => {
+                        globalMIndex++;
+                        return new TableRow({
+                            children: [
+                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER })] }),
+                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._learning_objective || q._learning_objectives || '-', size: 24 })] })] }),
+                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._topic || '-', size: 24 })] })] }),
+                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._cognitive_level ? `C${q._cognitive_level}` : '-', size: 24 })], alignment: AlignmentType.CENTER })] }),
+                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: TYPE_LABELS[type] || type, size: 24 })], alignment: AlignmentType.CENTER })] }),
+                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER })] }),
+                            ],
+                        });
+                    })
+                )
+            ],
+          })
         ],
       }],
     });
 
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `Soal_HOTS_${formData?.topic || 'Kompilasi'}.docx`);
+    const filenameTopic = Array.isArray(formData?.topic) ? formData.topic[0] : (formData?.topic || 'Kompilasi');
+    saveAs(blob, `Soal_HOTS_${filenameTopic}.docx`);
+    setIsDownloading(false);
+  } catch (error) {
+    console.error("Error generating DOCX:", error);
+    Swal.fire('Error', 'Gagal mengunduh dokumen. Silakan coba lagi.', 'error');
+    setIsDownloading(false);
+  }
   };
 
   const TYPE_LABELS: Record<string, string> = {
@@ -388,7 +445,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
   };
 
   const groupedQuestions = result?.questions?.reduce((acc: any, q: any) => {
-    const type = q._type || formData?.question_type || 'multiple_choice';
+    const type = q._type || (Array.isArray(formData?.question_type) ? formData.question_type[0] : formData?.question_type) || 'multiple_choice';
     if (!acc[type]) acc[type] = [];
     acc[type].push(q);
     return acc;
@@ -398,6 +455,11 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
   let globalQuestionIndex = 0;
   let globalAnswerIndex = 0;
   let globalMatrixIndex = 0;
+
+  const latexDelimiters = [
+    { left: '$$', right: '$$', display: true },
+    { left: '$', right: '$', display: false },
+  ];
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
@@ -459,18 +521,19 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                               <span className="font-bold">{globalQuestionIndex}.</span>
                               <div className="flex-1">
                                 <p className="text-justify mb-4">
-                                  {q.question}
+                                  <Latex delimiters={latexDelimiters}>{q.question}</Latex>
                                   {q.image_prompt && (
                                     <button 
                                       onClick={() => handleImageClick(q.question, q.image_prompt)}
-                                      className="ml-2 inline-flex items-center justify-center p-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors align-middle"
+                                      className="ml-2 inline-flex items-center justify-center px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors align-middle gap-1"
                                       title="Generate/Toggle Gambar"
                                     >
                                       {imgState?.status === 'loading' ? (
-                                        <Loader2 size={16} className="animate-spin" />
+                                        <Loader2 size={14} className="animate-spin" />
                                       ) : (
-                                        <Package size={16} className={imgState?.status === 'done' ? 'text-emerald-600' : ''} />
+                                        <CheckCircle size={14} className={imgState?.status === 'done' ? 'text-emerald-600' : ''} />
                                       )}
+                                      <span className="text-xs font-medium">Generate Gambar</span>
                                     </button>
                                   )}
                                 </p>
@@ -525,7 +588,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                                     ) : (
                                       <span className="font-bold min-w-[1.5rem]">{String.fromCharCode(65 + i)}.</span>
                                     )}
-                                    <span>{cleanOpt}</span>
+                                    <span><Latex delimiters={latexDelimiters}>{cleanOpt}</Latex></span>
                                   </div>
                                 )})}
                               </div>
@@ -557,16 +620,16 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                       {questions.map((q: any) => {
                         globalAnswerIndex++;
                         return (
-                          <div key={globalAnswerIndex} className="break-inside-avoid p-4 bg-slate-50 rounded-lg border border-slate-100">
+                          <div key={globalAnswerIndex} className="break-inside-avoid p-4 bg-white rounded-lg border border-slate-200">
                             <div className="flex gap-2">
-                              <span className="font-bold text-royal-blue-600">{globalAnswerIndex}.</span>
+                              <span className="font-bold text-slate-900">{globalAnswerIndex}.</span>
                               <div className="flex-1">
                                 <div className="mb-2">
-                                  <span className="font-bold text-emerald-700">Jawaban: {q.correct_answer}</span>
+                                  <span className="font-bold text-slate-900">Jawaban: <Latex delimiters={latexDelimiters}>{q.correct_answer}</Latex></span>
                                 </div>
-                                <div className="text-sm text-slate-700 bg-white p-3 rounded border border-slate-100">
+                                <div className="text-sm text-slate-800 bg-white p-0 rounded border-none">
                                   <span className="font-semibold block mb-1">Pembahasan:</span>
-                                  {q.explanation}
+                                  <Latex delimiters={latexDelimiters}>{q.explanation}</Latex>
                                 </div>
                               </div>
                             </div>
@@ -603,9 +666,21 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                           return (
                             <tr key={globalMatrixIndex}>
                               <td className="border border-slate-300 px-4 py-2 text-center">{globalMatrixIndex}</td>
-                              <td className="border border-slate-300 px-4 py-2">{q._learning_objectives || formData?.learning_objectives || '-'}</td>
-                              <td className="border border-slate-300 px-4 py-2">{q._topic || formData?.topic || '-'}</td>
-                              <td className="border border-slate-300 px-4 py-2 text-center">L{Math.ceil((formData?.cognitive_level || 1)/2)} (C{formData?.cognitive_level})</td>
+                              <td className="border border-slate-300 px-4 py-2">
+                                {(q._learning_objectives || (Array.isArray(formData?.learning_objectives) 
+                                  ? formData.learning_objectives.map((s: string) => s.replace(/\n/g, ', ')).join('; ') 
+                                  : formData?.learning_objectives?.replace(/\n/g, ', ')) || '-')}
+                              </td>
+                              <td className="border border-slate-300 px-4 py-2">
+                                {(q._topic || (Array.isArray(formData?.topic) 
+                                  ? formData.topic.map((s: string) => s.replace(/\n/g, ', ')).join('; ') 
+                                  : formData?.topic?.replace(/\n/g, ', ')) || '-')}
+                              </td>
+                              <td className="border border-slate-300 px-4 py-2 text-center">
+                                {q._cognitive_level ? `C${q._cognitive_level}` : (Array.isArray(formData?.cognitive_level) 
+                                  ? formData.cognitive_level.map((l: number) => `C${l}`).join(', ') 
+                                  : `L${Math.ceil((formData?.cognitive_level || 1)/2)} (C${formData?.cognitive_level})`)}
+                              </td>
                               <td className="border border-slate-300 px-4 py-2 text-center capitalize">{TYPE_LABELS[type] || type}</td>
                               <td className="border border-slate-300 px-4 py-2 text-center">{globalMatrixIndex}</td>
                             </tr>
@@ -623,15 +698,21 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
 
       {/* Bottom Action Bar */}
       <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <span className="text-xs text-slate-500 flex items-center gap-1">
-          <span className="material-symbols-outlined text-sm">history</span>
-          {cached ? 'Dimuat dari Cache' : 'Baru saja dibuat'}
-        </span>
-        <div className="flex gap-3">
-          <button className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors text-sm font-medium flex items-center gap-2">
-            <Printer size={18} />
-            Cetak
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={handleResetClick}
+            disabled={isResetting}
+            className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white transition-colors text-sm font-bold flex items-center gap-2 shadow-md shadow-orange-500/20 disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isResetting ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+            {isResetting ? 'Memproses...' : 'Buat Baru'}
           </button>
+          <span className="text-xs text-slate-500 flex items-center gap-1">
+            <span className="material-symbols-outlined text-sm">history</span>
+            {cached ? 'Dimuat dari Cache' : 'Baru saja dibuat'}
+          </span>
+        </div>
+        <div className="flex gap-3">
           <button 
             onClick={handleSave}
             className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors text-sm font-medium flex items-center gap-2"
@@ -641,10 +722,11 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
           </button>
           <button 
             onClick={handleDownloadDocx}
-            className="px-4 py-2 rounded-xl bg-royal-blue-600 hover:bg-royal-blue-700 text-white transition-colors text-sm font-medium flex items-center gap-2 shadow-md shadow-royal-blue-500/20"
+            disabled={isDownloading}
+            className="px-4 py-2 rounded-xl bg-royal-blue-600 hover:bg-royal-blue-700 text-white transition-colors text-sm font-medium flex items-center gap-2 shadow-md shadow-royal-blue-500/20 disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <Download size={18} />
-            Download Word
+            {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+            {isDownloading ? 'Downloading...' : 'Download Word'}
           </button>
         </div>
       </div>
