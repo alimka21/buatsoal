@@ -2,13 +2,14 @@ import { Copy, Printer, Download, FileText, CheckCircle, Grid, Save, Image as Im
 import Swal from 'sweetalert2';
 import { useState } from 'react';
 import { cn } from '@/utils/cn';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, Table, TableRow, TableCell, BorderStyle, WidthType } from 'docx';
+import { Document, Packer, LevelFormat, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 import { useGeneratorStore } from '@/store/generatorStore';
 import { useAuthStore } from '@/store/authStore';
 import { generateImage } from '@/services/ai/imageModelService';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
+import { buildHeaderSection, buildQuestionsSection, buildAnswerSection, buildMatrixSection } from '@/services/docxBuilder';
 
 interface ResultViewerProps {
   result: any;
@@ -127,299 +128,77 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
       return acc;
     }, {});
 
-    let globalQIndex = 0;
-    let globalAIndex = 0;
-    let globalMIndex = 0;
-
     const doc = new Document({
+      numbering: {
+        config: [
+          {
+            reference: "question-numbering",
+            levels: [
+              {
+                level: 0,
+                format: LevelFormat.DECIMAL,
+                text: "%1.",
+                alignment: AlignmentType.LEFT,
+                style: {
+                  paragraph: {
+                    indent: { left: 720, hanging: 360 },
+                  },
+                },
+              },
+              {
+                level: 1,
+                format: LevelFormat.UPPER_LETTER,
+                text: "%2.",
+                alignment: AlignmentType.LEFT,
+                style: {
+                  paragraph: {
+                    indent: { left: 1440, hanging: 360 },
+                  },
+                },
+              },
+            ],
+          },
+          {
+            reference: "bullet-numbering",
+            levels: [
+              {
+                level: 0,
+                format: LevelFormat.BULLET,
+                text: "o", // Circle bullet
+                alignment: AlignmentType.LEFT,
+                style: {
+                  paragraph: {
+                    indent: { left: 1440, hanging: 360 },
+                  },
+                },
+              },
+            ],
+          },
+          {
+            reference: "answer-numbering",
+            levels: [
+              {
+                level: 0,
+                format: LevelFormat.DECIMAL,
+                text: "%1.",
+                alignment: AlignmentType.LEFT,
+                style: {
+                  paragraph: {
+                    indent: { left: 720, hanging: 360 },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
       sections: [{
         properties: {},
         children: [
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "DAFTAR SOAL",
-                bold: true,
-                size: 24, // 12pt
-              })
-            ],
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 200 },
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Mata Pelajaran: ${result.subject || 'Biologi'}`,
-                size: 24, // 12pt
-              })
-            ],
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 400 },
-          }),
-          
-          // Questions Section
-          ...Object.entries(groupedQuestionsForDoc).flatMap(([type, questions]: [string, any]) => [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Bagian ${TYPE_LABELS[type] || type}`,
-                  bold: true,
-                  color: "000000",
-                  size: 24, // 12pt
-                })
-              ],
-              spacing: { before: 300, after: 200 },
-            }),
-            ...questions.flatMap((q: any) => {
-              globalQIndex++;
-              return [
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: `${globalQIndex}. ${q.question}`,
-                      bold: true,
-                      size: 24, // 12pt
-                    }),
-                  ],
-                  spacing: { before: 200, after: 100 },
-                }),
-                ...(imageStates[q.question]?.status === 'done' && imageStates[q.question]?.base64 ? [
-                  new Paragraph({
-                    children: [
-                      new ImageRun({
-                        data: Uint8Array.from(atob(imageStates[q.question].base64!), c => c.charCodeAt(0)),
-                        transformation: {
-                          width: 200,
-                          height: 200,
-                        },
-                        type: "png", // Explicitly set type to satisfy docx types
-                      }),
-                    ],
-                    alignment: AlignmentType.CENTER,
-                    spacing: { after: 100 },
-                  })
-                ] : []),
-                ...(type === 'matching' ? [
-                    new Paragraph({
-                        children: [
-                            new TextRun({
-                                text: "Soal Pengantar",
-                                size: 24, // 12pt
-                            })
-                        ],
-                        spacing: { after: 100 },
-                    }),
-                    new Table({
-                        width: { size: 100, type: WidthType.PERCENTAGE },
-                        borders: {
-                            top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                            bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                            left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                            right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                            insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                            insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                        },
-                        rows: [
-                            new TableRow({
-                                children: [
-                                    new TableCell({
-                                        children: [new Paragraph({ children: [new TextRun({ text: "Pernyataan", bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
-                                        width: { size: 50, type: WidthType.PERCENTAGE },
-                                    }),
-                                    new TableCell({
-                                        children: [new Paragraph({ children: [new TextRun({ text: "Jawaban", bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
-                                        width: { size: 50, type: WidthType.PERCENTAGE },
-                                    }),
-                                ],
-                            }),
-                            ...(q.options ? q.options.map((opt: string, i: number) => 
-                                new TableRow({
-                                    children: [
-                                        new TableCell({
-                                            children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${opt.split(' - ')[0] || ''}`, size: 24 })] })], 
-                                        }),
-                                        new TableCell({
-                                            children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}.`, size: 24 })] })], 
-                                        }),
-                                    ],
-                                })
-                            ) : [
-                                new TableRow({
-                                    children: [
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })] })] }),
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })] })] }),
-                                    ],
-                                }),
-                                new TableRow({
-                                    children: [
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "2.", size: 24 })] })] }),
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "2.", size: 24 })] })] }),
-                                    ],
-                                }),
-                                new TableRow({
-                                    children: [
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "3.", size: 24 })] })] }),
-                                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "3.", size: 24 })] })] }),
-                                    ],
-                                }),
-                            ]),
-                        ],
-                    })
-                ] : q.options ? q.options.map((opt: string, i: number) => {
-                  const cleanOpt = opt.replace(/^[A-Ea-e][\.\)]\s*/, '');
-                  let prefix = `${String.fromCharCode(65 + i)}. `;
-                  if (type === 'complex_multiple_choice') prefix = "o "; // Circle bullet
-                  if (type === 'true_false') return new Paragraph({ // Horizontal true/false
-                      children: [
-                          new TextRun({ text: "( ) Benar", size: 24 }),
-                          new TextRun({ text: "\t\t\t", size: 24 }), // Tab spacing
-                          new TextRun({ text: "( ) Salah", size: 24 }),
-                      ],
-                      indent: { left: 720 },
-                  });
-                  
-                  return new Paragraph({
-                    children: [
-                        new TextRun({
-                            text: `${prefix}${cleanOpt}`,
-                            size: 24, // 12pt
-                        })
-                    ],
-                    indent: { left: 720 }, // Indent options
-                  });
-                }) : [
-                  new Table({
-                    width: { size: 100, type: WidthType.PERCENTAGE },
-                    borders: {
-                        top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                        bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                        left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                        right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                    },
-                    rows: [
-                        new TableRow({
-                            children: [
-                                new TableCell({
-                                    children: [
-                                        new Paragraph({ text: "" }),
-                                        new Paragraph({ text: "" }),
-                                        new Paragraph({ text: "" }),
-                                        new Paragraph({ text: "" })
-                                    ],
-                                }),
-                            ],
-                        }),
-                    ],
-                  })
-                ]),
-                new Paragraph({ text: "" }), // Empty line
-              ];
-            })
-          ]),
-
-          // Answer Key Section
-          new Paragraph({
-            children: [
-                new TextRun({
-                    text: "KUNCI JAWABAN & PEMBAHASAN",
-                    bold: true,
-                    size: 24, // 12pt
-                })
-            ],
-            alignment: AlignmentType.CENTER,
-            pageBreakBefore: true,
-            spacing: { before: 400, after: 200 },
-          }),
-          ...Object.entries(groupedQuestionsForDoc).flatMap(([type, questions]: [string, any]) => [
-            new Paragraph({
-              children: [
-                  new TextRun({
-                      text: `Bagian ${TYPE_LABELS[type] || type}`,
-                      bold: true,
-                      color: "000000",
-                      size: 24, // 12pt
-                  })
-              ],
-              spacing: { before: 300, after: 200 },
-            }),
-            ...questions.flatMap((q: any) => {
-              globalAIndex++;
-              return [
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: `${globalAIndex}. Jawaban: ${q.correct_answer}`,
-                      bold: true,
-                      size: 24, // 12pt
-                    }),
-                  ],
-                }),
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: `Pembahasan: ${q.explanation}`,
-                      italics: true,
-                      size: 24, // 12pt
-                    }),
-                  ],
-                  spacing: { after: 200 },
-                }),
-              ];
-            })
-          ]),
-
-          // Matrix (Kisi-Kisi) Section
-          new Paragraph({
-            children: [
-                new TextRun({
-                    text: "KISI-KISI SOAL",
-                    bold: true,
-                    size: 24, // 12pt
-                })
-            ],
-            alignment: AlignmentType.CENTER,
-            pageBreakBefore: true,
-            spacing: { before: 400, after: 200 },
-          }),
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            borders: {
-                top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-                insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-            },
-            rows: [
-                new TableRow({
-                    tableHeader: true,
-                    children: [
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "No", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 5, type: WidthType.PERCENTAGE } }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Kompetensi Dasar / Tujuan", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 30, type: WidthType.PERCENTAGE } }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Materi", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 25, type: WidthType.PERCENTAGE } }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Level Kognitif", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 15, type: WidthType.PERCENTAGE } }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Bentuk Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 15, type: WidthType.PERCENTAGE } }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "No Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER })], width: { size: 10, type: WidthType.PERCENTAGE } }),
-                    ],
-                }),
-                ...Object.entries(groupedQuestionsForDoc).flatMap(([type, questions]: [string, any]) => 
-                    questions.map((q: any) => {
-                        globalMIndex++;
-                        return new TableRow({
-                            children: [
-                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER })] }),
-                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._learning_objective || q._learning_objectives || '-', size: 24 })] })] }),
-                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._topic || '-', size: 24 })] })] }),
-                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._cognitive_level ? `C${q._cognitive_level}` : '-', size: 24 })], alignment: AlignmentType.CENTER })] }),
-                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: TYPE_LABELS[type] || type, size: 24 })], alignment: AlignmentType.CENTER })] }),
-                                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER })] }),
-                            ],
-                        });
-                    })
-                )
-            ],
-          })
+          ...buildHeaderSection(result, formData),
+          ...buildQuestionsSection(groupedQuestionsForDoc, imageStates),
+          ...buildAnswerSection(groupedQuestionsForDoc),
+          ...buildMatrixSection(groupedQuestionsForDoc, formData)
         ],
       }],
     });
@@ -520,6 +299,11 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                             <div className="flex gap-2 mb-2">
                               <span className="font-bold">{globalQuestionIndex}.</span>
                               <div className="flex-1">
+                                {q.stimulus && (
+                                  <div className="mb-4 p-4 bg-slate-50 border-l-4 border-royal-blue-200 rounded-r-lg text-justify text-slate-700 italic">
+                                    <Latex delimiters={latexDelimiters}>{q.stimulus}</Latex>
+                                  </div>
+                                )}
                                 <p className="text-justify mb-4">
                                   <Latex delimiters={latexDelimiters}>{q.question}</Latex>
                                   {q.image_prompt && (

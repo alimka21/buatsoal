@@ -27,7 +27,7 @@ export interface GenerateParams {
   apiKey?: string;
 }
 
-export const generateQuestions = async (userId: string, params: GenerateParams) => {
+export const generateQuestions = async (userId: string, params: GenerateParams, onProgress?: (percent: number) => void) => {
   const inputHash = generateHash(params);
 
   // 1. Check Cache (Read-first optimization, though insert-conflict handles it too)
@@ -48,6 +48,8 @@ export const generateQuestions = async (userId: string, params: GenerateParams) 
       status: 'success'
     });
 
+    if (onProgress) onProgress(100);
+
     return {
       result: cachedData.result_json,
       cacheHit: true,
@@ -57,7 +59,8 @@ export const generateQuestions = async (userId: string, params: GenerateParams) 
 
   // 2. Call AI Orchestrator
   try {
-    const { result: resultJson, retries } = await generateQuestionsOrchestrator(params, params.apiKey);
+    if (onProgress) onProgress(10);
+    const { result: resultJson, retries } = await generateQuestionsOrchestrator(params, params.apiKey, onProgress);
 
     // 3. Save to DB (Atomic Insert with Conflict Handling)
     const { data: savedData, error: saveError } = await supabase

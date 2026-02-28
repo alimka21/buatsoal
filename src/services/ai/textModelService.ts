@@ -1,7 +1,9 @@
 import { getGeminiClient } from './aiClient';
 import { GenerateParams } from '../questionService';
 
-const TEXT_MODEL = "gemini-2.5-flash";
+const GENERATOR_MODEL = "gemini-2.5-flash";
+const EVALUATOR_MODEL = "gemini-3-flash";
+const EVALUATOR_TIMEOUT_MS = 20000; // 20 seconds
 const MAX_RETRIES = 2;
 
 function cleanAndParseJSON(jsonString: string): any {
@@ -42,10 +44,12 @@ function cleanAndParseJSON(jsonString: string): any {
   }
 }
 
-export const generateTextQuestions = async (params: GenerateParams, apiKey?: string, retries = 0): Promise<{ result: any; retries: number }> => {
+export const generateTextQuestions = async (params: GenerateParams, apiKey?: string, retries = 0, onProgress?: (percent: number) => void): Promise<{ result: any; retries: number }> => {
   try {
     const ai = getGeminiClient(apiKey);
     
+    if (onProgress) onProgress(20);
+
     // Map cognitive level to string description
     const cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
     let cognitiveStr = "";
@@ -76,7 +80,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       1. Distribute the ${params.count} questions evenly across the provided Topics and Learning Objectives.
       2. Distribute the questions across the requested Question Types (${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}).
       3. RANDOMIZE the correct answer positions (A, B, C, D, E) evenly. Do not default to 'A' or 'B'.
-
+      
       ${params.source_type !== 'no_material' && params.reference_text ? `Reference Material: "${params.reference_text}"` : ''}
       ${params.additional_instructions ? `Additional Instructions: ${params.additional_instructions}` : ''}
 
@@ -164,13 +168,15 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
     // STEP 1: Generate Draft
     console.log("Step 1: Generating Draft...");
     const draftResponse = await ai.models.generateContent({
-      model: TEXT_MODEL,
+      model: GENERATOR_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         temperature: 0.7
       }
     });
+
+    if (onProgress) onProgress(50);
 
     let currentDraftText = draftResponse.text;
     if (!currentDraftText) throw new Error("No response from Gemini during draft generation");
@@ -182,6 +188,9 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
     while (iteration < MAX_REFINEMENTS) {
       // STEP 2: Refine + Evaluate Draft
       console.log(`Step 2: Refining and Evaluating Draft (Iteration ${iteration + 1})...`);
+      
+      if (onProgress) onProgress(50 + ((iteration + 1) * 20)); // 70%, 90%
+
       const refineEvalPrompt = `
 Anda adalah AI evaluator soal pendidikan yang sangat ketat sekaligus Ahli Pembuat Soal HOTS.
 
@@ -189,6 +198,12 @@ TUGAS:
 1. Evaluasi draf soal di bawah ini menggunakan rubrik yang disediakan.
 2. Perbaiki soal tersebut agar memenuhi standar kualitas tinggi (skor >= 24/30).
 3. Kembalikan hasil perbaikan beserta skor evaluasinya dalam format JSON.
+
+PASTIKAN:
+- Jumlah soal tetap ${params.count}
+- Distribusi topic tetap merata
+- Tipe soal sesuai permintaan (${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type})
+- Posisi jawaban tetap random
 
 RUBRIK PENILAIAN (skor 1–5):
 1. Alignment Tujuan Pembelajaran: Mengukur tujuan pembelajaran (${params.learning_objectives}).
@@ -220,14 +235,37 @@ OUTPUT JSON SCHEMA:
 }
       `;
 
-      const refineEvalResponse = await ai.models.generateContent({
-        model: TEXT_MODEL,
-        contents: refineEvalPrompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.5
+      // Helper function for model fallback
+      const generateWithFallback = async () => {
+        const tryModel = async (model: string, timeout?: number) => {
+            const generatePromise = ai.models.generateContent({
+                model: model,
+                contents: refineEvalPrompt,
+                config: {
+                  responseMimeType: "application/json",
+                  temperature: 0.5
+                }
+            });
+
+            if (!timeout) return await generatePromise;
+
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("Timeout")), timeout)
+            );
+
+            return await Promise.race([generatePromise, timeoutPromise]) as any;
+        };
+
+        try {
+            console.log(`Attempting refinement with ${EVALUATOR_MODEL}...`);
+            return await tryModel(EVALUATOR_MODEL, EVALUATOR_TIMEOUT_MS);
+        } catch (error) {
+            console.warn(`Evaluator model (${EVALUATOR_MODEL}) failed or timed out, falling back to ${GENERATOR_MODEL}. Error:`, error);
+            return await tryModel(GENERATOR_MODEL);
         }
-      });
+      };
+
+      const refineEvalResponse = await generateWithFallback();
 
       const refineEvalText = refineEvalResponse.text;
       if (!refineEvalText) throw new Error("No response from Gemini during refinement/evaluation");
@@ -235,6 +273,11 @@ OUTPUT JSON SCHEMA:
       const result = cleanAndParseJSON(refineEvalText);
       console.log(`Iteration ${iteration + 1} Score: ${result.score}/30`);
       console.log(`Analysis: ${result.analysis}`);
+
+      // Structural Guard
+      if (result.refined_questions.length !== params.count) {
+        throw new Error(`Refinement broke question count. Expected ${params.count}, got ${result.refined_questions.length}`);
+      }
 
       // Update current draft with refined questions
       const updatedDraft = {
@@ -274,7 +317,7 @@ OUTPUT JSON SCHEMA:
 
     if (retries < MAX_RETRIES) {
       console.warn(`Gemini Text API call failed (${normalizedError.type}), retrying (${retries + 1}/${MAX_RETRIES})...`, error);
-      return generateTextQuestions(params, apiKey, retries + 1);
+      return generateTextQuestions(params, apiKey, retries + 1, onProgress);
     }
     
     const finalError: any = new Error(normalizedError.message);

@@ -47,7 +47,9 @@ export const useGeneratorStore = create<GeneratorState>((set, get) => ({
       // Wait, if we have multiple topics, we might want to ensure coverage.
       // The prompt instructs to distribute.
       
-      const { result, cacheHit } = await generateQuestions(userId, payload);
+      const { result, cacheHit } = await generateQuestions(userId, payload, (percent) => {
+        set({ progress: percent });
+      });
       
       // Post-process result to ensure _type, _topic, etc are present if the model didn't inject them perfectly
       // The model is asked to inject _type.
