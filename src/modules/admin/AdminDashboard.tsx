@@ -72,14 +72,20 @@ export default function AdminDashboard() {
   };
 
   const checkCurrentUserRole = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, email')
-        .eq('id', user.id)
-        .single();
-      setDebugInfo({ authEmail: user.email, profileRole: profile?.role, profileEmail: profile?.email });
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (user) {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role, email')
+          .eq('id', user.id)
+          .single();
+        if (profileError) throw profileError;
+        setDebugInfo({ authEmail: user.email, profileRole: profile?.role, profileEmail: profile?.email });
+      }
+    } catch (err) {
+      console.error("Error checking user role:", err);
     }
   };
 

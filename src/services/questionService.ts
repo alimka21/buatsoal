@@ -30,82 +30,56 @@ export interface GenerateParams {
 export const generateQuestions = async (userId: string, params: GenerateParams, onProgress?: (percent: number) => void) => {
   const inputHash = generateHash(params);
 
-  // 1. Check Cache (Read-first optimization, though insert-conflict handles it too)
-  const { data: cachedData } = await supabase
-    .from('generated_questions')
-    .select('*')
-    .eq('input_hash', inputHash)
-    .single();
-
-  if (cachedData) {
-    // Log Cache Hit
-    await supabase.from('activity_log').insert({
-      user_id: userId,
-      input_hash: inputHash,
-      model_used: cachedData.model_used,
-      retry_count: 0,
-      cache_hit: true,
-      status: 'success'
-    });
-
-    if (onProgress) onProgress(100);
-
-    return {
-      result: cachedData.result_json,
-      cacheHit: true,
-      hash: inputHash
-    };
-  }
-
-  // 2. Call AI Orchestrator
+  // 1. Call AI Orchestrator
   try {
     if (onProgress) onProgress(10);
     const { result: resultJson, retries } = await generateQuestionsOrchestrator(params, params.apiKey, onProgress);
 
-    // 3. Save to DB (Atomic Insert with Conflict Handling)
-    const { data: savedData, error: saveError } = await supabase
-      .from('generated_questions')
-      .insert({
-        created_by: userId,
-        input_hash: inputHash,
-        input_payload_json: params,
-        reference_text: params.reference_text,
-        result_json: resultJson,
-        model_used: GENERATION_MODEL // Or update to reflect multi-model usage
-      })
-      .select()
-      .single();
+    // 2. Save to DB (Individual Questions to Bank Soal)
+    try {
+      if (resultJson && resultJson.questions && Array.isArray(resultJson.questions)) {
+        const questionsToInsert = resultJson.questions.map((q: any) => ({
+          user_id: userId,
+          content: q,
+          subject: params.subject,
+          topic: Array.isArray(q._topic) ? q._topic[0] : q._topic,
+          question_type: q._type,
+          cognitive_level: q._cognitive_level
+        }));
 
-    if (saveError) {
-      // If conflict (duplicate key), it means another request saved it just now.
-      // We should fetch that one.
-      if (saveError.code === '23505') { // Unique violation
-         const { data: existingData } = await supabase
-          .from('generated_questions')
-          .select('*')
-          .eq('input_hash', inputHash)
-          .single();
-          
-         if (existingData) {
-           return {
-             result: existingData.result_json,
-             cacheHit: true, // Technically a race-condition cache hit
-             hash: inputHash
-           };
-         }
+        const { data: savedQuestions, error: saveError } = await supabase
+          .from('questions')
+          .insert(questionsToInsert)
+          .select();
+
+        if (saveError) {
+          console.error("Failed to save questions to bank:", saveError);
+        } else if (savedQuestions) {
+          // Inject the DB IDs back into the result so the UI can use them
+          resultJson.questions = savedQuestions.map(sq => ({
+            ...sq.content,
+            id: sq.id
+          }));
+        }
       }
-      console.error("Failed to save cache:", saveError);
+    } catch (dbError) {
+      console.error("Database save error:", dbError);
     }
 
-    // 4. Log Activity (Success)
-    await supabase.from('activity_log').insert({
-      user_id: userId,
-      input_hash: inputHash,
-      model_used: GENERATION_MODEL,
-      retry_count: retries,
-      cache_hit: false,
-      status: 'success'
-    });
+    // 3. Log Activity (Success)
+    try {
+      const { error } = await supabase.from('activity_log').insert({
+        user_id: userId,
+        input_hash: inputHash,
+        model_used: GENERATION_MODEL,
+        retry_count: retries,
+        cache_hit: false,
+        status: 'success'
+      });
+      if (error) throw error;
+    } catch (logError) {
+      console.error("Activity log error:", logError);
+    }
 
     return {
       result: resultJson,
@@ -114,15 +88,20 @@ export const generateQuestions = async (userId: string, params: GenerateParams, 
     };
   } catch (error: any) {
     // Log Failure
-    await supabase.from('activity_log').insert({
-      user_id: userId,
-      input_hash: inputHash,
-      model_used: GENERATION_MODEL,
-      retry_count: 2, // Assuming max retries reached if failed
-      cache_hit: false,
-      status: 'failed',
-      details: { error: error.message, type: error.type || 'unknown' }
-    });
+    try {
+      const { error: logError } = await supabase.from('activity_log').insert({
+        user_id: userId,
+        input_hash: inputHash,
+        model_used: GENERATION_MODEL,
+        retry_count: 2,
+        cache_hit: false,
+        status: 'failed',
+        details: { error: error.message, type: error.type || 'unknown' }
+      });
+      if (logError) throw logError;
+    } catch (err) {
+      console.error("Failed to log failure:", err);
+    }
     throw error;
   }
 };

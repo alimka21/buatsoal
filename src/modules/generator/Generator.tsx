@@ -17,9 +17,13 @@ export default function Generator() {
     setFormKey(prev => prev + 1);
   };
 
-  const handleGenerate = (data: any) => {
+  const handleGenerate = async (data: any) => {
     if (session?.user.id) {
-      generate(session.user.id, data);
+      try {
+        await generate(session.user.id, data);
+      } catch (err) {
+        console.error("Unhandled generation error in UI:", err);
+      }
     } else {
       Swal.fire({
         icon: 'error',
@@ -34,12 +38,13 @@ export default function Generator() {
     <div className="flex h-full overflow-hidden">
       {/* Left Sidebar Form */}
       <div className="w-[400px] xl:w-[450px] flex-none z-20 h-full border-r border-slate-200 bg-white">
-        <GeneratorForm 
-          key={formKey}
-          onSubmit={handleGenerate} 
-          isLoading={isGenerating} 
-          onValuesChange={setFormData}
-        />
+        <div key={formKey} className="h-full">
+          <GeneratorForm 
+            onSubmit={handleGenerate} 
+            isLoading={isGenerating} 
+            onValuesChange={setFormData}
+          />
+        </div>
       </div>
 
       {/* Main Preview Area */}

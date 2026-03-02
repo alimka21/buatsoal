@@ -18,7 +18,7 @@ export function buildHeaderSection(result: any, formData: any) {
         new TextRun({
           text: "DAFTAR SOAL",
           bold: true,
-          size: 24, // 12pt
+          size: 48, // 24pt
         })
       ],
       alignment: AlignmentType.CENTER,
@@ -28,7 +28,7 @@ export function buildHeaderSection(result: any, formData: any) {
       children: [
         new TextRun({
           text: `Mata Pelajaran: ${result.subject || 'Biologi'}`,
-          size: 24, // 12pt
+          size: 48, // 24pt
         })
       ],
       alignment: AlignmentType.CENTER,
@@ -45,7 +45,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
           text: `Bagian ${TYPE_LABELS[type] || type}`,
           bold: true,
           color: "000000",
-          size: 24, // 12pt
+          size: 48, // 24pt
         })
       ],
       spacing: { before: 300, after: 200, line: 360 },
@@ -58,7 +58,6 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
         const questionRuns = processedQuestion.split('\n').map((line: string, index: number) => {
             return new TextRun({
                 text: line.trim(),
-                bold: true,
                 size: 24, // 12pt
                 break: index > 0 ? 1 : 0
             });
@@ -67,33 +66,210 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
         const docElements = [];
 
         if (q.stimulus) {
-          const stimulusRuns = q.stimulus.split('\n').map((line: string, index: number) => {
-              return new TextRun({
-                  text: line.trim(),
-                  size: 24, // 12pt
-                  break: index > 0 ? 1 : 0
-              });
-          });
+          if (typeof q.stimulus === 'string') {
+            // Legacy string stimulus
+            const stimulusRuns = q.stimulus.split('\n').map((line: string, index: number) => {
+                return new TextRun({
+                    text: line.trim(),
+                    size: 24, // 12pt
+                    break: index > 0 ? 1 : 0
+                });
+            });
+
+            docElements.push(
+              new Paragraph({
+                children: stimulusRuns,
+                numbering: {
+                  reference: "question-numbering",
+                  level: 0,
+                },
+                spacing: { before: 200, after: 100, line: 360 },
+                alignment: AlignmentType.JUSTIFIED,
+              })
+            );
+          } else if (q.stimulus.type === 'text') {
+            // Text Stimulus
+            const stimulusRuns = q.stimulus.content.split('\n').map((line: string, index: number) => {
+                return new TextRun({
+                    text: line.trim(),
+                    size: 24, // 12pt
+                    break: index > 0 ? 1 : 0
+                });
+            });
+
+            docElements.push(
+              new Paragraph({
+                children: stimulusRuns,
+                numbering: {
+                  reference: "question-numbering",
+                  level: 0,
+                },
+                spacing: { before: 200, after: 100, line: 360 },
+                alignment: AlignmentType.JUSTIFIED,
+              })
+            );
+          } else if (q.stimulus.type === 'list') {
+            // List Stimulus
+            const stimulusRuns = q.stimulus.content.split('\n').map((line: string, index: number) => {
+                return new TextRun({
+                    text: line.trim(),
+                    size: 24, // 12pt
+                    break: index > 0 ? 1 : 0
+                });
+            });
+
+            docElements.push(
+              new Paragraph({
+                children: stimulusRuns,
+                numbering: {
+                  reference: "question-numbering",
+                  level: 0,
+                },
+                spacing: { before: 200, after: 100, line: 360 },
+                alignment: AlignmentType.JUSTIFIED,
+              })
+            );
+
+            if (q.stimulus.items) {
+                q.stimulus.items.forEach((item: string) => {
+                    docElements.push(
+                        new Paragraph({
+                            children: [new TextRun({ text: item, size: 24 })],
+                            bullet: {
+                                level: 0
+                            },
+                            indent: { left: 1440 }, // Indent bullet points
+                            spacing: { line: 360 }
+                        })
+                    );
+                });
+            }
+          } else if (q.stimulus.type === 'table') {
+             // Table Stimulus
+             // Add a paragraph for numbering first
+             docElements.push(
+                new Paragraph({
+                    children: [new TextRun({ text: "Perhatikan tabel berikut:", size: 24 })],
+                    numbering: {
+                        reference: "question-numbering",
+                        level: 0,
+                    },
+                    spacing: { before: 200, after: 100, line: 360 },
+                })
+             );
+
+             const tableRows = [];
+             // Header
+             if (q.stimulus.headers) {
+                tableRows.push(
+                    new TableRow({
+                        children: q.stimulus.headers.map((h: string) => 
+                            new TableCell({
+                                children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
+                                shading: { fill: "F3F4F6" }, // Light gray
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                            })
+                        )
+                    })
+                );
+             }
+             // Rows
+             if (q.stimulus.rows) {
+                q.stimulus.rows.forEach((row: string[]) => {
+                    tableRows.push(
+                        new TableRow({
+                            children: row.map((cell: string) => 
+                                new TableCell({
+                                    children: [new Paragraph({ children: [new TextRun({ text: cell, size: 24 })] })],
+                                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                                })
+                            )
+                        })
+                    );
+                });
+             }
+
+             docElements.push(
+                new Table({
+                    layout: TableLayoutType.AUTOFIT,
+                    width: { size: 100, type: WidthType.PERCENTAGE },
+                    borders: {
+                        top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                        bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                        left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                        right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                        insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                        insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                    },
+                    rows: tableRows,
+                    indent: { size: 720, type: WidthType.DXA } // Indent table to align with text
+                })
+             );
+          } else if (q.stimulus.type === 'chart') {
+             // Chart Stimulus
+             docElements.push(
+                new Paragraph({
+                    children: [new TextRun({ text: `Perhatikan grafik berikut: ${q.stimulus.description || ''}`, size: 24 })],
+                    numbering: {
+                        reference: "question-numbering",
+                        level: 0,
+                    },
+                    spacing: { before: 200, after: 100, line: 360 },
+                })
+             );
+
+             // Check if chart image is generated
+             const chartKey = `${q.question}_stimulus_chart`;
+             if (imageStates[chartKey]?.status === 'done' && imageStates[chartKey]?.base64) {
+                 docElements.push(
+                    new Paragraph({
+                        children: [
+                            new ImageRun({
+                                data: base64ToUint8Array(imageStates[chartKey].base64!),
+                                transformation: {
+                                    width: 300,
+                                    height: 200,
+                                },
+                                type: "png",
+                            }),
+                        ],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 100, line: 360 },
+                        indent: { left: 720 }
+                    })
+                 );
+             } else {
+                 docElements.push(
+                    new Paragraph({
+                        children: [new TextRun({ text: "[Grafik belum digenerate]", italics: true, color: "FF0000", size: 24 })],
+                        indent: { left: 720 },
+                        spacing: { after: 100, line: 360 },
+                    })
+                 );
+             }
+          }
 
           docElements.push(
             new Paragraph({
-              children: stimulusRuns,
-              spacing: { before: 200, after: 100, line: 360 },
+              children: questionRuns,
+              indent: { left: 720 }, // Align with text of numbered item
+              spacing: { before: 100, after: 100, line: 360 }, // 1.5 Line Spacing
+              alignment: AlignmentType.JUSTIFIED,
+            })
+          );
+        } else {
+          docElements.push(
+            new Paragraph({
+              children: questionRuns,
+              numbering: {
+                reference: "question-numbering",
+                level: 0,
+              },
+              spacing: { before: 200, after: 100, line: 360 }, // 1.5 Line Spacing
               alignment: AlignmentType.JUSTIFIED,
             })
           );
         }
-
-        docElements.push(
-          new Paragraph({
-            children: questionRuns,
-            numbering: {
-              reference: "question-numbering",
-              level: 0,
-            },
-            spacing: { before: q.stimulus ? 100 : 200, after: 100, line: 360 }, // 1.5 Line Spacing
-          })
-        );
 
         return [
           ...docElements,
@@ -118,13 +294,66 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
         ];
       } catch (e) {
         console.error("Error rendering question:", e);
-        return [new Paragraph({ text: `Error rendering question`, color: "FF0000" })];
+        return [new Paragraph({ children: [new TextRun({ text: `Error rendering question`, color: "FF0000" })] })];
       }
     })
   ]);
 }
 
 export function buildMatchingTable(q: any) {
+  if (q.pairs) {
+    return [
+      new Paragraph({
+          children: [
+              new TextRun({
+                  text: "Soal Pengantar",
+                  size: 24, // 12pt
+              })
+          ],
+          spacing: { after: 100, line: 360 },
+      }),
+      new Table({
+          layout: TableLayoutType.FIXED,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: {
+              top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+              bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+              left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+              right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+              insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+          },
+          rows: [
+              new TableRow({
+                  children: [
+                      new TableCell({
+                          children: [new Paragraph({ children: [new TextRun({ text: "Pernyataan", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })],
+                          width: { size: 50, type: WidthType.PERCENTAGE },
+                      }),
+                      new TableCell({
+                          children: [new Paragraph({ children: [new TextRun({ text: "Pasangan", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })],
+                          width: { size: 50, type: WidthType.PERCENTAGE },
+                      }),
+                  ],
+              }),
+              ...q.pairs.map((pair: any, i: number) => 
+                  new TableRow({
+                      children: [
+                          new TableCell({
+                              children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${pair.left}`, size: 24 })], spacing: { line: 360 } })], 
+                          }),
+                          new TableCell({
+                              children: [new Paragraph({ children: [new TextRun({ text: `${String.fromCharCode(65 + i)}. ${pair.right}`, size: 24 })], spacing: { line: 360 } })], 
+                          }),
+                      ],
+                  })
+              )
+          ],
+      })
+    ];
+  }
+
+  // Fallback for legacy format (options array)
   return [
     new Paragraph({
         children: [
@@ -175,18 +404,6 @@ export function buildMatchingTable(q: any) {
                     children: [
                         new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })], spacing: { line: 360 } })] }),
                         new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })], spacing: { line: 360 } })] }),
-                    ],
-                }),
-                new TableRow({
-                    children: [
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "2.", size: 24 })], spacing: { line: 360 } })] }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "2.", size: 24 })], spacing: { line: 360 } })] }),
-                    ],
-                }),
-                new TableRow({
-                    children: [
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "3.", size: 24 })], spacing: { line: 360 } })] }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "3.", size: 24 })], spacing: { line: 360 } })] }),
                     ],
                 }),
             ]),
@@ -282,7 +499,7 @@ export function buildAnswerSection(groupedQuestions: any) {
           new TextRun({
               text: "KUNCI JAWABAN & PEMBAHASAN",
               bold: true,
-              size: 24, // 12pt
+              size: 48, // 24pt
           })
       ],
       alignment: AlignmentType.CENTER,
@@ -296,7 +513,7 @@ export function buildAnswerSection(groupedQuestions: any) {
                 text: `Bagian ${TYPE_LABELS[type] || type}`,
                 bold: true,
                 color: "000000",
-                size: 24, // 12pt
+                size: 48, // 24pt
             })
         ],
         spacing: { before: 300, after: 200, line: 360 },
@@ -343,7 +560,7 @@ export function buildMatrixSection(groupedQuestions: any, formData: any) {
           new TextRun({
               text: "KISI-KISI SOAL",
               bold: true,
-              size: 24, // 12pt
+              size: 48, // 24pt
           })
       ],
       alignment: AlignmentType.CENTER,
@@ -365,25 +582,26 @@ export function buildMatrixSection(groupedQuestions: any, formData: any) {
           new TableRow({
               tableHeader: true,
               children: [
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "No", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 5, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Kompetensi Dasar / Tujuan", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 30, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Materi", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 25, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Level Kognitif", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 15, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Bentuk Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 15, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "No Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Nomor Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 10, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Tujuan Pembelajaran", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 30, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Materi", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 25, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Level Kognitif", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 15, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Bentuk Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 20, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
               ],
           }),
           ...Object.entries(groupedQuestions).flatMap(([type, questions]: [string, any]) => 
               questions.map((q: any) => {
                   globalMIndex++;
+                  const topic = q._topic ? (Array.isArray(q._topic) ? q._topic[0] : String(q._topic).split(',')[0].trim()) : '-';
+                  const learningObjective = q._learning_objective || q._learning_objectives || '-';
+                  
                   return new TableRow({
                       children: [
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })] }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._learning_objective || q._learning_objectives || '-', size: 24 })], spacing: { line: 360 } })] }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._topic || '-', size: 24 })], spacing: { line: 360 } })] }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._cognitive_level ? `C${q._cognitive_level}` : '-', size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })] }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: TYPE_LABELS[type] || type, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })] }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })] }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: learningObjective, size: 24 })], spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: topic, size: 24 })], spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._cognitive_level ? `C${q._cognitive_level}` : '-', size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: TYPE_LABELS[type] || type, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
                       ],
                   });
               })

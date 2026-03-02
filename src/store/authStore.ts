@@ -7,6 +7,7 @@ interface AuthState {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  initialized: boolean;
   initialize: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -16,36 +17,51 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   profile: null,
   loading: true,
+  initialized: false,
 
   initialize: async () => {
+    if (get().initialized) return; // Prevent multiple initializations
+    
     set({ loading: true });
     
-    // Get initial session
-    const { data: { session } } = await supabase.auth.getSession();
-    set({ session });
-
-    if (session) {
-      await get().refreshProfile();
-    } else {
-      set({ profile: null });
-    }
-
-    // Listen for changes
-    supabase.auth.onAuthStateChange((_event, session) => {
+    try {
+      // Get initial session once
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+      
       set({ session });
+
       if (session) {
-        get().refreshProfile();
+        await get().refreshProfile();
       } else {
         set({ profile: null });
       }
-      set({ loading: false });
-    });
-    
-    set({ loading: false });
+
+      // Listen for changes once
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        set({ session });
+        if (session) {
+          // Only refresh profile if session user changed or profile missing
+          const currentProfile = get().profile;
+          if (!currentProfile || currentProfile.id !== session.user.id) {
+              get().refreshProfile();
+          }
+        } else {
+          set({ profile: null });
+        }
+        set({ loading: false });
+      });
+      
+      set({ loading: false, initialized: true });
+    } catch (error) {
+      console.error("Auth initialization error:", error);
+      set({ loading: false, initialized: true }); // Ensure loading stops even on error
+    }
   },
 
   refreshProfile: async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = get().session;
     if (!session) return;
 
     try {
@@ -55,10 +71,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .eq('id', session.user.id)
         .maybeSingle();
       
-      console.log("Auth UID:", session.user.id);
-      console.log("Profile raw data:", data);
-      console.log("Profile error:", error);
-
       if (error) {
          console.log("Profile fetch error:", error);
       }
@@ -74,7 +86,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
-    set({ session: null, profile: null });
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Error signing out:", error);
+    } finally {
+      set({ session: null, profile: null });
+    }
   }
 }));

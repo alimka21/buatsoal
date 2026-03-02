@@ -1,6 +1,6 @@
-import { Copy, Printer, Download, FileText, CheckCircle, Grid, Save, Image as ImageIcon, Trash2, Play, Loader2, Package } from 'lucide-react';
+import { Copy, Printer, Download, FileText, CheckCircle, Grid, Save, Image as ImageIcon, Trash2, Play, Loader2, Package, Plus, Folder } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/utils/cn';
 import { Document, Packer, LevelFormat, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
@@ -25,6 +25,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
   const [imageStates, setImageStates] = useState<Record<string, { status: 'idle' | 'loading' | 'done' | 'error', base64?: string, visible: boolean }>>({});
   const [isDownloading, setIsDownloading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  
   const { generate, progress } = useGeneratorStore();
   const { session } = useAuthStore();
 
@@ -73,7 +74,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
 
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-slate-400 p-12 bg-slate-100/50">
+      <div className="h-full flex flex-col items-center justify-start text-slate-400 p-12 bg-slate-100/50 pt-48">
         <div className="w-20 h-20 flex items-center justify-center mb-6">
           <div className="animate-spin rounded-full h-14 w-14 border-4 border-slate-200 border-t-royal-blue-600"></div>
         </div>
@@ -94,7 +95,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
   // Placeholder state
   if (!result) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-slate-400 p-12 bg-slate-100/50">
+      <div className="h-full flex flex-col items-center justify-start text-slate-400 p-12 bg-slate-100/50 pt-48">
         <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm border border-slate-200">
           <FileText size={40} className="opacity-40 text-slate-500" />
         </div>
@@ -105,16 +106,6 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
       </div>
     );
   }
-
-  const handleSave = () => {
-    Swal.fire({
-      icon: 'success',
-      title: 'Disimpan!',
-      text: 'Soal telah berhasil disimpan ke Riwayat Soal.',
-      timer: 2000,
-      showConfirmButton: false
-    });
-  };
 
   const handleDownloadDocx = async () => {
     if (!result || !result.questions) return;
@@ -203,9 +194,14 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
       }],
     });
 
-    const blob = await Packer.toBlob(doc);
-    const filenameTopic = Array.isArray(formData?.topic) ? formData.topic[0] : (formData?.topic || 'Kompilasi');
-    saveAs(blob, `Soal_HOTS_${filenameTopic}.docx`);
+    try {
+      const blob = await Packer.toBlob(doc);
+      const filenameTopic = Array.isArray(formData?.topic) ? formData.topic[0] : (formData?.topic || 'Kompilasi');
+      saveAs(blob, `Soal_HOTS_${filenameTopic}.docx`);
+    } catch (blobError) {
+      console.error("Error creating blob:", blobError);
+      throw blobError;
+    }
     setIsDownloading(false);
   } catch (error) {
     console.error("Error generating DOCX:", error);
@@ -249,7 +245,9 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
             <h2 className="text-2xl font-bold text-slate-900 mb-1">Pratinjau Langsung</h2>
             <p className="text-sm text-slate-500 mb-6">Tinjau soal yang dihasilkan sebelum mengunduh.</p>
           </div>
-          <div className="flex gap-1 mb-0">
+        </div>
+        
+        <div className="flex gap-1 mb-0">
             {[
               { id: 'questions', label: 'Soal', icon: FileText },
               { id: 'answers', label: 'Jawaban & Pembahasan', icon: CheckCircle },
@@ -269,7 +267,6 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                 {tab.label}
               </button>
             ))}
-          </div>
         </div>
       </div>
 
@@ -295,13 +292,86 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                         globalQuestionIndex++;
                         const imgState = imageStates[q.question];
                         return (
-                          <div key={globalQuestionIndex} className="break-inside-avoid">
-                            <div className="flex gap-2 mb-2">
+                          <div key={globalQuestionIndex} className="break-inside-avoid relative group">
+                            <div className="flex gap-2 mb-2 p-2 rounded-lg transition-colors hover:bg-slate-50">
                               <span className="font-bold">{globalQuestionIndex}.</span>
                               <div className="flex-1">
                                 {q.stimulus && (
-                                  <div className="mb-4 p-4 bg-slate-50 border-l-4 border-royal-blue-200 rounded-r-lg text-justify text-slate-700 italic">
-                                    <Latex delimiters={latexDelimiters}>{q.stimulus}</Latex>
+                                  <div className="mb-4 text-justify">
+                                    {typeof q.stimulus === 'string' ? (
+                                      <Latex delimiters={latexDelimiters}>{q.stimulus}</Latex>
+                                    ) : (
+                                      <>
+                                        {q.stimulus.type === 'text' && (
+                                          <Latex delimiters={latexDelimiters}>{q.stimulus.content}</Latex>
+                                        )}
+                                        {q.stimulus.type === 'list' && (
+                                          <div className="my-2">
+                                            <p className="mb-2"><Latex delimiters={latexDelimiters}>{q.stimulus.content}</Latex></p>
+                                            <ul className="list-disc pl-5 space-y-1">
+                                              {q.stimulus.items?.map((item: string, idx: number) => (
+                                                <li key={idx}><Latex delimiters={latexDelimiters}>{item}</Latex></li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+                                        {q.stimulus.type === 'table' && (
+                                          <div className="overflow-x-auto my-2">
+                                            <table className="min-w-full border-collapse border border-slate-300 text-sm">
+                                              <thead>
+                                                <tr>
+                                                  {q.stimulus.headers?.map((h: string, idx: number) => (
+                                                    <th key={idx} className="border border-slate-300 bg-slate-100 px-3 py-2 text-left font-semibold">
+                                                      <Latex delimiters={latexDelimiters}>{h}</Latex>
+                                                    </th>
+                                                  ))}
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {q.stimulus.rows?.map((row: string[], rIdx: number) => (
+                                                  <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                                                    {row.map((cell: string, cIdx: number) => (
+                                                      <td key={cIdx} className="border border-slate-300 px-3 py-2">
+                                                        <Latex delimiters={latexDelimiters}>{cell}</Latex>
+                                                      </td>
+                                                    ))}
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        )}
+                                        {q.stimulus.type === 'chart' && (
+                                          <div className="my-4 p-4 border border-slate-200 rounded-lg bg-slate-50 flex flex-col items-center">
+                                            <p className="text-sm text-slate-600 mb-3 italic text-center">{q.stimulus.description}</p>
+                                            
+                                            {imageStates[`${q.question}_stimulus_chart`]?.status === 'done' && imageStates[`${q.question}_stimulus_chart`]?.base64 ? (
+                                              <img 
+                                                src={`data:image/png;base64,${imageStates[`${q.question}_stimulus_chart`].base64}`} 
+                                                alt="Chart Stimulus" 
+                                                className="max-w-full h-auto max-h-64 rounded-lg border border-slate-200 mb-2"
+                                              />
+                                            ) : (
+                                              <button 
+                                                onClick={() => handleImageClick(`${q.question}_stimulus_chart`, q.stimulus.image_prompt)}
+                                                className="px-4 py-2 rounded-lg bg-royal-blue-600 hover:bg-royal-blue-700 text-white transition-colors text-sm font-medium flex items-center gap-2"
+                                              >
+                                                {imageStates[`${q.question}_stimulus_chart`]?.status === 'loading' ? (
+                                                  <Loader2 size={16} className="animate-spin" />
+                                                ) : (
+                                                  <ImageIcon size={16} />
+                                                )}
+                                                Generate Grafik
+                                              </button>
+                                            )}
+                                            
+                                            {imageStates[`${q.question}_stimulus_chart`]?.status === 'error' && (
+                                              <p className="text-xs text-red-500 mt-2">Gagal membuat grafik. Coba lagi.</p>
+                                            )}
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
                                   </div>
                                 )}
                                 <p className="text-justify mb-4">
@@ -359,16 +429,38 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                               </div>
                             </div>
                             
-                            {q.options ? (
+                            {q._type === 'matching' && q.pairs ? (
+                              <div className="pl-8 grid grid-cols-2 gap-6 mt-4">
+                                <div className="space-y-3">
+                                  <p className="font-bold text-sm text-slate-700 border-b border-slate-200 pb-2">Pernyataan</p>
+                                  {q.pairs.map((pair: any, idx: number) => (
+                                    <div key={`left-${idx}`} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm min-h-[50px] flex items-center">
+                                      <span className="font-bold mr-3 text-slate-500">{idx + 1}.</span> 
+                                      <Latex delimiters={latexDelimiters}>{pair.left}</Latex>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="space-y-3">
+                                  <p className="font-bold text-sm text-slate-700 border-b border-slate-200 pb-2">Pasangan</p>
+                                  {q.pairs.map((pair: any, idx: number) => (
+                                    <div key={`right-${idx}`} className="p-3 bg-white border border-slate-200 rounded-lg text-sm min-h-[50px] flex items-center shadow-sm">
+                                      <span className="font-bold mr-3 text-slate-500">{String.fromCharCode(65 + idx)}.</span> 
+                                      <Latex delimiters={latexDelimiters}>{pair.right}</Latex>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : q.options ? (
                               <div className="pl-8 space-y-2 text-[15px]">
                                 {q.options.map((opt: string, i: number) => {
+                                  // Remove prefix if AI added it (e.g., "A. Answer")
                                   const cleanOpt = opt.replace(/^[A-Ea-e][\.\)]\s*/, '');
                                   return (
-                                  <div key={i} className="flex gap-3">
-                                    {type === 'complex_multiple_choice' ? (
-                                      <div className="w-5 h-5 border-2 border-slate-300 rounded flex-shrink-0 mt-0.5"></div>
-                                    ) : type === 'true_false' ? (
-                                      <div className="w-5 h-5 border-2 border-slate-300 rounded-full flex-shrink-0 mt-0.5"></div>
+                                  <div key={i} className="flex gap-3 items-start">
+                                    {q._type === 'complex_multiple_choice' ? (
+                                      <div className="w-5 h-5 border-2 border-slate-300 rounded flex-shrink-0 mt-0.5 bg-white"></div>
+                                    ) : q._type === 'true_false' ? (
+                                      <div className="w-5 h-5 border-2 border-slate-300 rounded-full flex-shrink-0 mt-0.5 bg-white"></div>
                                     ) : (
                                       <span className="font-bold min-w-[1.5rem]">{String.fromCharCode(65 + i)}.</span>
                                     )}
@@ -378,7 +470,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                               </div>
                             ) : (
                               <div className="pl-8 mt-4">
-                                  <div className="h-32 border border-black bg-white p-2 text-sm text-slate-400 italic flex items-center justify-center">
+                                  <div className="h-32 border border-slate-300 border-dashed bg-slate-50 p-4 text-sm text-slate-400 italic flex items-center justify-center rounded-lg">
                                       Area jawaban siswa...
                                   </div>
                               </div>
@@ -435,12 +527,11 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                   <table className="w-full text-sm text-left border-collapse border border-slate-300">
                     <thead className="bg-slate-100">
                       <tr>
-                        <th className="border border-slate-300 px-4 py-2 w-12 text-center">No</th>
-                        <th className="border border-slate-300 px-4 py-2">Kompetensi Dasar / Tujuan</th>
+                        <th className="border border-slate-300 px-4 py-2 w-16 text-center">Nomor Soal</th>
+                        <th className="border border-slate-300 px-4 py-2">Tujuan Pembelajaran</th>
                         <th className="border border-slate-300 px-4 py-2">Materi</th>
                         <th className="border border-slate-300 px-4 py-2 w-24 text-center">Level Kognitif</th>
                         <th className="border border-slate-300 px-4 py-2 w-24 text-center">Bentuk Soal</th>
-                        <th className="border border-slate-300 px-4 py-2 w-16 text-center">No Soal</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -451,14 +542,10 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                             <tr key={globalMatrixIndex}>
                               <td className="border border-slate-300 px-4 py-2 text-center">{globalMatrixIndex}</td>
                               <td className="border border-slate-300 px-4 py-2">
-                                {(q._learning_objectives || (Array.isArray(formData?.learning_objectives) 
-                                  ? formData.learning_objectives.map((s: string) => s.replace(/\n/g, ', ')).join('; ') 
-                                  : formData?.learning_objectives?.replace(/\n/g, ', ')) || '-')}
+                                {q._learning_objective || q._learning_objectives || '-'}
                               </td>
                               <td className="border border-slate-300 px-4 py-2">
-                                {(q._topic || (Array.isArray(formData?.topic) 
-                                  ? formData.topic.map((s: string) => s.replace(/\n/g, ', ')).join('; ') 
-                                  : formData?.topic?.replace(/\n/g, ', ')) || '-')}
+                                {q._topic ? (Array.isArray(q._topic) ? q._topic[0] : String(q._topic).split(',')[0].trim()) : '-'}
                               </td>
                               <td className="border border-slate-300 px-4 py-2 text-center">
                                 {q._cognitive_level ? `C${q._cognitive_level}` : (Array.isArray(formData?.cognitive_level) 
@@ -466,7 +553,6 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                                   : `L${Math.ceil((formData?.cognitive_level || 1)/2)} (C${formData?.cognitive_level})`)}
                               </td>
                               <td className="border border-slate-300 px-4 py-2 text-center capitalize">{TYPE_LABELS[type] || type}</td>
-                              <td className="border border-slate-300 px-4 py-2 text-center">{globalMatrixIndex}</td>
                             </tr>
                           );
                         })
@@ -493,17 +579,10 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
           </button>
           <span className="text-xs text-slate-500 flex items-center gap-1">
             <span className="material-symbols-outlined text-sm">history</span>
-            {cached ? 'Dimuat dari Cache' : 'Baru saja dibuat'}
+            {cached ? 'Dimuat dari Cache' : 'Otomatis tersimpan di Bank Soal'}
           </span>
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={handleSave}
-            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors text-sm font-medium flex items-center gap-2"
-          >
-            <Save size={18} />
-            Simpan
-          </button>
           <button 
             onClick={handleDownloadDocx}
             disabled={isDownloading}

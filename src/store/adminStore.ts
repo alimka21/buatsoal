@@ -16,8 +16,11 @@ export const useAdminStore = create<AdminState>((set) => ({
   fetchData: async () => {
     set({ loading: true });
     try {
-      const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-      const { data: logsData } = await supabase.from('activity_log').select('*, profiles(email)').order('created_at', { ascending: false }).limit(50);
+      const { data: usersData, error: usersError } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      if (usersError) throw usersError;
+
+      const { data: logsData, error: logsError } = await supabase.from('activity_log').select('*, profiles(email)').order('created_at', { ascending: false }).limit(50);
+      if (logsError) throw logsError;
       
       set({ users: usersData || [], logs: logsData || [], loading: false });
     } catch (error) {

@@ -26,8 +26,6 @@ const formSchema = z.object({
   question_type: z.array(z.string()).min(1, "Pilih minimal satu tipe soal"),
   count: z.coerce.number().min(1).max(20),
   option_count: z.coerce.number().min(3).max(5).optional(),
-  
-  apiKey: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -485,7 +483,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
                       {...register('source_type')}
                       className="peer sr-only"
                     />
-                    <div className="px-2 py-3 bg-slate-50 border border-slate-200 peer-checked:border-royal-blue-500 peer-checked:bg-royal-blue-50 rounded-xl transition-all h-full flex flex-col items-center justify-center text-center gap-1 hover:border-royal-blue-300">
+                    <div className="px-2 py-3 bg-slate-50 border border-slate-200 peer-checked:border-royal-blue-500 peer-checked:bg-royal-blue-50 peer-checked:text-royal-blue-700 rounded-xl transition-all h-full flex flex-col items-center justify-center text-center gap-1 hover:border-royal-blue-300">
                       <type.icon size={20} className="text-slate-400 peer-checked:text-royal-blue-600" />
                       <span className="text-[10px] font-semibold leading-tight text-slate-600 peer-checked:text-royal-blue-700">{type.label}</span>
                     </div>

@@ -23,8 +23,14 @@ export default function Layout() {
     });
 
     if (result.isConfirmed) {
-      await signOut();
-      navigate('/login');
+      try {
+        await signOut();
+        navigate('/login');
+      } catch (error) {
+        console.error("Logout failed:", error);
+        // Force navigate even if logout fails
+        navigate('/login');
+      }
     }
   };
 
@@ -36,7 +42,8 @@ export default function Layout() {
 
   navItems.push(
     { label: 'Buat Soal', href: '/generator', icon: PenTool },
-    { label: 'Riwayat Soal', href: '/history', icon: History },
+    { label: 'Proyek Soal', href: '/projects', icon: History },
+    { label: 'Bank Soal', href: '/history', icon: History },
     { label: 'Pengaturan', href: '/settings', icon: Settings }
   );
 

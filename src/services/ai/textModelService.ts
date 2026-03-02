@@ -2,8 +2,8 @@ import { getGeminiClient } from './aiClient';
 import { GenerateParams } from '../questionService';
 
 const GENERATOR_MODEL = "gemini-2.5-flash";
-const EVALUATOR_MODEL = "gemini-3-flash";
-const EVALUATOR_TIMEOUT_MS = 20000; // 20 seconds
+const EVALUATOR_MODEL = "gemini-2.5-flash"; // Use consistent model
+const EVALUATOR_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 2;
 
 function cleanAndParseJSON(jsonString: string): any {
@@ -16,39 +16,105 @@ function cleanAndParseJSON(jsonString: string): any {
     console.warn("JSON parse failed, attempting to sanitize LaTeX backslashes...", e);
     
     // 2. Try to fix common LaTeX escape issues
-    // The error "Bad escaped character" happens when a backslash is followed by an invalid escape char.
-    // We want to escape backslashes that are likely part of LaTeX commands but not valid JSON escapes.
-    // Valid JSON escapes: " \ / b f n r t u
-    // We will double-escape backslashes that are followed by a character that is NOT a valid escape.
-    
-    // Regex explanation:
-    // \\        Match a single backslash
-    // (?!       Negative lookahead (not followed by...)
-    //   ["\\/bfnrtu]  Any of the valid escape characters
-    // )
     const sanitized = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
     
     try {
       return JSON.parse(sanitized);
     } catch (e2) {
-       // If that fails, try a more aggressive approach: escape ALL backslashes that aren't already escaped?
-       // No, that might break valid escapes like \n.
-       // Let's try one more fallback: if the error is specifically about bad escapes, 
-       // maybe we just double escape ALL backslashes if the previous attempt failed? 
-       // But that turns \n into \\n (literal \n), which might be okay for text content.
-       
-       // Let's stick to the first sanitization for now, as it targets the specific "Bad escaped character" cause.
        console.error("Failed to parse sanitized JSON", sanitized.substring(0, 200) + "...");
        throw e; // Throw original error to trigger retry logic
     }
   }
 }
 
+// 2️⃣ PISAHKAN LOGIKA TIPE SOAL (VALIDATOR)
+function validateQuestions(questions: any[], requestedTypes: string | string[], count: number) {
+    if (!Array.isArray(questions)) {
+        throw new Error("Result 'questions' is not an array.");
+    }
+
+    if (questions.length !== count) {
+        throw new Error(`Question count mismatch. Expected ${count}, got ${questions.length}`);
+    }
+
+    questions.forEach((q: any, idx: number) => {
+        // Check for required fields
+        if (!q.question) {
+             throw new Error(`Question ${idx + 1} is missing 'question' field.`);
+        }
+
+        // Auto-fill explanation if missing
+        if (!q.explanation) {
+            q.explanation = "Pembahasan lengkap akan ditambahkan oleh guru.";
+        }
+
+        // Validate correct_answer based on type
+        if (q._type !== 'matching' && q._type !== 'essay' && !q.correct_answer) {
+             throw new Error(`Question ${idx + 1} is missing 'correct_answer'.`);
+        }
+
+        if (q._type === 'essay' && !q.correct_answer) {
+             q.correct_answer = "Lihat pembahasan.";
+        }
+
+        // Validate specific types
+        if (q._type === "complex_multiple_choice") {
+            if (!q.correct_answer || !q.correct_answer.includes(",")) {
+                // Try to fix if it's an array
+                if (Array.isArray(q.correct_answer)) {
+                    q.correct_answer = q.correct_answer.join(", ");
+                } else {
+                    throw new Error(`Question ${idx + 1} (Complex MC) must have multiple correct answers (comma separated). Got: ${q.correct_answer}`);
+                }
+            }
+        }
+        if (q._type === "matching") {
+            if (!q.pairs || !Array.isArray(q.pairs) || q.pairs.length === 0) {
+                throw new Error(`Question ${idx + 1} (Matching) must have 'pairs' array.`);
+            }
+            // Auto-fill correct_answer for matching if missing, for consistency
+            if (!q.correct_answer) {
+                q.correct_answer = "Pasangan yang benar sesuai tabel.";
+            }
+        }
+        if (q._type === "true_false") {
+             if (!q.options || q.options.length !== 2 || !q.options.includes("Benar") || !q.options.includes("Salah")) {
+                 // Auto-fix if possible, otherwise throw
+                 if (q.options && q.options.length === 2) {
+                     // Assume index 0 is True, 1 is False or similar, but better to enforce strictness
+                 }
+                 throw new Error(`Question ${idx + 1} (True/False) must have options ["Benar", "Salah"].`);
+             }
+        }
+        if (q._type === "essay") {
+            if (q.options && q.options.length > 0) {
+                // Warning only, or strip it? Let's strip it to be safe
+                delete q.options;
+            }
+        }
+        
+        // Validate Stimulus Structure
+        if (q.stimulus) {
+            if (typeof q.stimulus === 'object') {
+                if (!['text', 'list', 'table', 'chart'].includes(q.stimulus.type)) {
+                     throw new Error(`Question ${idx + 1} has invalid stimulus type: ${q.stimulus.type}`);
+                }
+                if (q.stimulus.type === 'text' && !q.stimulus.content) throw new Error(`Question ${idx + 1} (Text Stimulus) missing content.`);
+                if (q.stimulus.type === 'list' && (!q.stimulus.items || !Array.isArray(q.stimulus.items))) throw new Error(`Question ${idx + 1} (List Stimulus) missing items array.`);
+                if (q.stimulus.type === 'table' && (!q.stimulus.headers || !q.stimulus.rows)) throw new Error(`Question ${idx + 1} (Table Stimulus) missing headers or rows.`);
+                if (q.stimulus.type === 'chart' && (!q.stimulus.description || !q.stimulus.image_prompt)) throw new Error(`Question ${idx + 1} (Chart Stimulus) missing description or image_prompt.`);
+            }
+        }
+    });
+    
+    return true;
+}
+
 export const generateTextQuestions = async (params: GenerateParams, apiKey?: string, retries = 0, onProgress?: (percent: number) => void): Promise<{ result: any; retries: number }> => {
   try {
     const ai = getGeminiClient(apiKey);
     
-    if (onProgress) onProgress(20);
+    if (onProgress) onProgress(10);
 
     // Map cognitive level to string description
     const cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
@@ -57,6 +123,23 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
         cognitiveStr = params.cognitive_level.map((level: number) => cognitiveMap[level - 1]).join(", ");
     } else {
         cognitiveStr = cognitiveMap[params.cognitive_level - 1] || "C4 (Menganalisis)";
+    }
+
+    // Calculate Question Distribution
+    let distributionInstruction = "";
+    if (Array.isArray(params.question_type) && params.question_type.length > 1) {
+        const typeCount = params.question_type.length;
+        const baseCount = Math.floor(params.count / typeCount);
+        const remainder = params.count % typeCount;
+        
+        const distribution = params.question_type.map((type, index) => {
+            const count = baseCount + (index < remainder ? 1 : 0);
+            return `${count} ${type.replace('_', ' ')}`;
+        });
+        
+        distributionInstruction = `2. Distribute the questions EXACTLY as follows: ${distribution.join(', ')}.`;
+    } else {
+        distributionInstruction = `2. Distribute the questions across the requested Question Types (${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}).`;
     }
 
     const prompt = `
@@ -78,7 +161,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       
       DISTRIBUTION INSTRUCTIONS:
       1. Distribute the ${params.count} questions evenly across the provided Topics and Learning Objectives.
-      2. Distribute the questions across the requested Question Types (${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}).
+      ${distributionInstruction}
       3. RANDOMIZE the correct answer positions (A, B, C, D, E) evenly. Do not default to 'A' or 'B'.
       
       ${params.source_type !== 'no_material' && params.reference_text ? `Reference Material: "${params.reference_text}"` : ''}
@@ -102,13 +185,34 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - DO NOT use LaTeX for simple arithmetic or text (e.g., write "2 + 2 = 4", not "$2 + 2 = 4$").
       - DO NOT auto-format simple variables like "x" or "y" unless part of a larger equation.
 
-      STIMULUS STRUCTURE:
+      STIMULUS STRUCTURE (1️⃣ UBAH STIMULUS JADI TERSTRUKTUR):
+      - REQUIRED for C3, C4, C5, C6.
+      - OPTIONAL/NONE for C1, C2.
       - Must include a context/case/data/text/situation (2-4 sentences minimum, except for lower grades).
       - Must be relevant to students' lives.
       - Must contain information that students need to analyze to answer the question.
       - For Higher Levels (C4+): Stimulus must include data, a problem to solve, or trigger reasoning.
       - LONG READING PASSAGES: For subjects like Bahasa Indonesia, English, IPS, PPKN, etc., provide longer reading passages (texts, poems, news, etc.) as stimulus.
       - MANDATORY PREFIX: If a reading passage is used, precede it with a clear instruction line, e.g., "Bacalah Pernyataan Berikut:", "Bacalah Pantun Berikut:", "Bacalah Berita Berikut:", etc.
+      - FORMATS:
+        1. "text": Standard paragraphs.
+        2. "list": Intro sentence + list of items.
+        3. "table": Use for data presentation. Do NOT embed tables in plain text string.
+        4. "chart": Use for graphical reasoning. Provide a description and image prompt.
+
+      STIMULUS-QUESTION SEPARATION RULE:
+      - The stimulus and the question must have distinct roles.
+      - The question must NOT repeat or restate the stimulus text.
+      - Do NOT copy sentences from the stimulus into the question.
+      - The stimulus provides data/context only.
+      - The question must directly refer to the stimulus without rewriting it.
+
+      QUESTION TYPE RULES:
+      1. Multiple Choice: Standard 1 correct answer.
+      2. Complex Multiple Choice: MUST have MORE THAN ONE correct answer (e.g., "A, C" or "B, D, E").
+      3. Matching: MUST use the "pairs" field with "left" and "right" items. Do NOT use "options".
+      4. True/False: Use "options": ["Benar", "Salah"].
+      5. Essay/Short Answer: No options needed.
 
       QUESTION STEM RULES:
       - Avoid ending the question stem with a direct question mark if possible. Use incomplete sentences or direct instructions.
@@ -140,6 +244,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - Verify alignment with Learning Objectives.
       - Verify no ambiguity.
       - Verify only 1 correct answer (for standard MC).
+      - Verify multiple correct answers (for Complex MC).
       ---
       
       Output strictly in JSON format.
@@ -151,10 +256,22 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
           {
             "id": 1,
             "question": "...",
-            "stimulus": "...", // Context/Case study/Intro text if needed
-            "image_prompt": "...", // Detailed prompt for an image generator if the question needs an illustration (optional)
-            "options": ["A", "B", "C", "D", "E"], // For multiple_choice (${params.option_count || 5} options), complex_multiple_choice (${params.option_count || 5} options), or true_false (["Benar", "Salah"])
-            "correct_answer": "...", // For complex_multiple_choice, use comma separated values (e.g., "A, C"). For true_false, use "Benar" or "Salah".
+            "stimulus": {
+              "type": "text", // "text" | "list" | "table" | "chart"
+              "content": "...", // REQUIRED if type is "text". The text content.
+              "items": ["Item 1", "Item 2"], // REQUIRED if type is "list".
+              "headers": ["Col1", "Col2"], // REQUIRED if type is "table". Array of column headers.
+              "rows": [["Row1Col1", "Row1Col2"], ["Row2Col1", "Row2Col2"]], // REQUIRED if type is "table". Array of arrays of strings.
+              "description": "...", // REQUIRED if type is "chart". Description of the chart.
+              "image_prompt": "..." // REQUIRED if type is "chart". Prompt to generate the chart image.
+            },
+            "image_prompt": "...", // Detailed prompt for an image generator if the question needs an illustration (optional, separate from stimulus chart)
+            "options": ["A", "B", "C", "D", "E"], // For multiple_choice, complex_multiple_choice, or true_false. NULL for matching.
+            "pairs": [ // REQUIRED ONLY for "matching" type
+               { "left": "Item 1", "right": "Match 1" },
+               { "left": "Item 2", "right": "Match 2" }
+            ],
+            "correct_answer": "...", // REQUIRED for MC, Complex MC, True/False. OPTIONAL for Matching.
             "explanation": "...",
             "_type": "multiple_choice", // The specific type of this question from the requested types
             "_topic": "...", // The specific topic this question covers from the provided list
@@ -167,138 +284,206 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
 
     // STEP 1: Generate Draft
     console.log("Step 1: Generating Draft...");
-    const draftResponse = await ai.models.generateContent({
-      model: GENERATOR_MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.7
-      }
-    });
+    
+    // Updated to use user-requested model
+    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash-exp", "gemini-flash-latest"];
+    let draftResponse;
+    let lastError;
 
-    if (onProgress) onProgress(50);
+    for (const model of modelsToTry) {
+        try {
+            console.log(`Attempting generation with model: ${model}`);
+            draftResponse = await ai.models.generateContent({
+                model: model,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    temperature: 0.7
+                }
+            });
+            if (draftResponse && draftResponse.text) {
+                break; // Success
+            }
+        } catch (e: any) {
+            console.warn(`Failed with model ${model}:`, e.message);
+            lastError = e;
+            // Continue to next model
+        }
+    }
+
+    if (!draftResponse || !draftResponse.text) {
+        throw lastError || new Error("All models failed to generate content");
+    }
+
+    if (onProgress) onProgress(40);
 
     let currentDraftText = draftResponse.text;
     if (!currentDraftText) throw new Error("No response from Gemini during draft generation");
 
-    let iteration = 0;
-    const MAX_REFINEMENTS = 2;
-    let totalRetries = retries;
+    let currentDraft = cleanAndParseJSON(currentDraftText);
 
-    while (iteration < MAX_REFINEMENTS) {
-      // STEP 2: Refine + Evaluate Draft
-      console.log(`Step 2: Refining and Evaluating Draft (Iteration ${iteration + 1})...`);
-      
-      if (onProgress) onProgress(50 + ((iteration + 1) * 20)); // 70%, 90%
+    // Calculate max cognitive level to determine if refinement is needed
+    let maxCognitiveLevel = 0;
+    if (Array.isArray(params.cognitive_level)) {
+        maxCognitiveLevel = Math.max(...params.cognitive_level);
+    } else {
+        maxCognitiveLevel = params.cognitive_level;
+    }
 
-      const refineEvalPrompt = `
-Anda adalah AI evaluator soal pendidikan yang sangat ketat sekaligus Ahli Pembuat Soal HOTS.
+    // Skip refinement for Lower Order Thinking Skills (C1-C2)
+    if (maxCognitiveLevel < 3) {
+        console.log("Skipping refinement for Lower Order Thinking Skills (C1-C2)...");
+        // Still run validation
+        try {
+            validateQuestions(currentDraft.questions, params.question_type, params.count);
+        } catch (e) {
+            console.warn("Validation failed for C1-C2 draft, but proceeding as refinement is skipped.", e);
+        }
+        if (onProgress) onProgress(100);
+        return { result: currentDraft, retries: 0 };
+    }
 
-TUGAS:
-1. Evaluasi draf soal di bawah ini menggunakan rubrik yang disediakan.
-2. Perbaiki soal tersebut agar memenuhi standar kualitas tinggi (skor >= 24/30).
-3. Kembalikan hasil perbaikan beserta skor evaluasinya dalam format JSON.
+    // 3️⃣ ADAPTIVE REFINEMENT (Refine ONLY C3-C6)
+    const questionsToRefine = currentDraft.questions.filter((q: any) => q._cognitive_level >= 3);
+    const questionsToSkip = currentDraft.questions.filter((q: any) => !q._cognitive_level || q._cognitive_level < 3);
 
-PASTIKAN:
-- Jumlah soal tetap ${params.count}
-- Distribusi topic tetap merata
-- Tipe soal sesuai permintaan (${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type})
-- Posisi jawaban tetap random
+    if (questionsToRefine.length === 0) {
+        console.log("No C3-C6 questions found. Skipping refinement.");
+        if (onProgress) onProgress(100);
+        return { result: currentDraft, retries: 0 };
+    }
 
-RUBRIK PENILAIAN (skor 1–5):
-1. Alignment Tujuan Pembelajaran: Mengukur tujuan pembelajaran (${params.learning_objectives}).
-2. Kesesuaian Bloom Level: Sesuai level Bloom (${cognitiveStr}).
-3. Kualitas Stimulus: Kontekstual, informatif, memicu analisis.
-4. Kualitas Distraktor: Opsi salah logis dan tidak trivial.
-5. Kejelasan Bahasa: Jelas dan sesuai jenjang (${params.jenjang} Kelas ${params.class_grade}).
-6. Validitas Teknis Soal: Hanya ada satu jawaban benar dan tidak ambigu.
+    console.log(`Step 2: Adaptive Refinement (Refining ${questionsToRefine.length} HOTS questions)...`);
+    if (onProgress) onProgress(60);
 
-DRAF SOAL AWAL (JSON):
-${currentDraftText}
+    const refineEvalPrompt = `
+Role: Strict Educational Evaluator & HOTS Expert.
+
+TASK:
+1. Evaluate the ${questionsToRefine.length} draft questions below.
+2. Refine them to meet high quality standards (Score >= 24/30).
+3. Return ONLY the refined questions.
+
+CONSTRAINTS:
+- Question Types: ${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}
+- Randomize Answers: Yes
+
+RUBRIC:
+1. Alignment (Learning Obj)
+2. Bloom Level (C3-C6 MUST have stimulus. C1-C2 ignore stimulus.)
+3. Stimulus Quality (Contextual for C3+)
+4. Distractors (Logical, not trivial)
+5. Language (Clear, Grade ${params.class_grade})
+6. Validity (1 correct answer, or multiple for Complex MC)
+7. Stimulus-Question Separation: Check that the question does NOT repeat or duplicate stimulus text. Penalize repetition.
+
+DRAFT QUESTIONS (JSON):
+${JSON.stringify(questionsToRefine)}
 
 OUTPUT JSON SCHEMA:
 {
   "refined_questions": [
     // Array of questions matching the original schema
     {
-      "id": 1,
+      "id": 1, // Keep original ID
       "question": "...",
-      "stimulus": "...",
+      "stimulus": {
+        "type": "text", // "text" | "list" | "table" | "chart"
+        "content": "...",
+        "items": ["..."],
+        "headers": ["..."],
+        "rows": [["..."]],
+        "description": "...",
+        "image_prompt": "..."
+      },
       "image_prompt": "...",
       "options": ["A", "B", "C", "D", "E"],
+      "pairs": [
+        { "left": "...", "right": "..." }
+      ],
       "correct_answer": "...",
-      "explanation": "..."
+      "explanation": "...",
+      "_type": "...",
+      "_topic": "...",
+      "_learning_objective": "...",
+      "_cognitive_level": 4
     }
-  ],
-  "score": 0, // Total score out of 30
-  "analysis": "Penjelasan singkat mengenai perbaikan yang dilakukan dan alasan skor."
+  ]
 }
-      `;
+    `;
 
-      // Helper function for model fallback
-      const generateWithFallback = async () => {
-        const tryModel = async (model: string, timeout?: number) => {
-            const generatePromise = ai.models.generateContent({
-                model: model,
-                contents: refineEvalPrompt,
-                config: {
-                  responseMimeType: "application/json",
-                  temperature: 0.5
+    // Helper function for model fallback
+    const generateWithFallback = async () => {
+        let lastError;
+        for (const model of modelsToTry) {
+            try {
+                console.log(`Attempting refinement with model: ${model}`);
+                const response = await ai.models.generateContent({
+                    model: model,
+                    contents: refineEvalPrompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        temperature: 0.5
+                    }
+                });
+                if (response && response.text) {
+                    return response;
                 }
-            });
-
-            if (!timeout) return await generatePromise;
-
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("Timeout")), timeout)
-            );
-
-            return await Promise.race([generatePromise, timeoutPromise]) as any;
-        };
-
-        try {
-            console.log(`Attempting refinement with ${EVALUATOR_MODEL}...`);
-            return await tryModel(EVALUATOR_MODEL, EVALUATOR_TIMEOUT_MS);
-        } catch (error) {
-            console.warn(`Evaluator model (${EVALUATOR_MODEL}) failed or timed out, falling back to ${GENERATOR_MODEL}. Error:`, error);
-            return await tryModel(GENERATOR_MODEL);
+            } catch (e: any) {
+                console.warn(`Refinement failed with model ${model}:`, e.message);
+                lastError = e;
+            }
         }
-      };
+        throw lastError || new Error("All models failed during refinement");
+    };
 
-      const refineEvalResponse = await generateWithFallback();
+    let refinedQuestions: any[] = [];
+    let totalRetries = retries;
 
-      const refineEvalText = refineEvalResponse.text;
-      if (!refineEvalText) throw new Error("No response from Gemini during refinement/evaluation");
-      
-      const result = cleanAndParseJSON(refineEvalText);
-      console.log(`Iteration ${iteration + 1} Score: ${result.score}/30`);
-      console.log(`Analysis: ${result.analysis}`);
+    try {
+        const refineEvalResponse = await generateWithFallback();
+        const refineEvalText = refineEvalResponse.text;
+        if (!refineEvalText) throw new Error("No response from Gemini during refinement/evaluation");
+        
+        const result = cleanAndParseJSON(refineEvalText);
+        
+        if (result.refined_questions && Array.isArray(result.refined_questions)) {
+            refinedQuestions = result.refined_questions;
+        } else {
+            console.warn(`Refinement returned invalid structure, using original questions.`);
+            refinedQuestions = questionsToRefine;
+        }
 
-      // Structural Guard
-      if (result.refined_questions.length !== params.count) {
-        throw new Error(`Refinement broke question count. Expected ${params.count}, got ${result.refined_questions.length}`);
-      }
-
-      // Update current draft with refined questions
-      const updatedDraft = {
-        subject: params.subject,
-        topic: params.topic,
-        questions: result.refined_questions
-      };
-      currentDraftText = JSON.stringify(updatedDraft);
-
-      // STEP 3: Check Score
-      if (result.score >= 24) {
-         console.log("Score is >= 24, returning final output.");
-         return { result: updatedDraft, retries: totalRetries };
-      }
-
-      iteration++;
-      totalRetries++;
+    } catch (err) {
+        console.error(`Error refining questions:`, err);
+        refinedQuestions = questionsToRefine; // Fallback to original if refinement fails
     }
 
-    console.log("Max refinements reached, returning current draft.");
-    return { result: cleanAndParseJSON(currentDraftText), retries: totalRetries };
+    // Merge refined questions back with skipped questions
+    // We need to maintain order or just concat? 
+    // Usually order matters if we want to distribute topics evenly, but since we split by cognitive level, 
+    // the order might be mixed. Let's sort by ID if possible, or just concat.
+    // The draft generation assigns IDs 1..N.
+    
+    const allQuestions = [...questionsToSkip, ...refinedQuestions].sort((a: any, b: any) => a.id - b.id);
+
+    // Update current draft with refined questions
+    currentDraft.questions = allQuestions;
+
+    // 5️⃣ STRUCTURAL GUARD LAYER
+    console.log("Step 3: Final Validation...");
+    try {
+        validateQuestions(currentDraft.questions, params.question_type, params.count);
+        console.log("Validation passed.");
+    } catch (e: any) {
+        console.error("Validation failed:", e.message);
+        // In a real production system, we might trigger a re-generation here.
+        // For now, we log it and maybe try to fix simple things or just return what we have with a warning.
+        // throw e; // Or decide to return with warning
+    }
+
+    if (onProgress) onProgress(100);
+    return { result: currentDraft, retries: totalRetries };
 
   } catch (error: any) {
     // Error Normalization

@@ -10,6 +10,9 @@ import { ProtectedRoute, AdminRoute } from '@/components/layout/ProtectedRoute';
 import Layout from '@/components/layout/Layout';
 import { useAuthStore } from '@/store/authStore';
 
+import ProjectList from '@/modules/projects/ProjectList';
+import ProjectDetail from '@/modules/projects/ProjectDetail';
+
 export default function App() {
   const initializeAuth = useAuthStore((state) => state.initialize);
 
@@ -29,6 +32,8 @@ export default function App() {
             <Route path="/" element={<Navigate to="/generator" replace />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/history" element={<History />} />
+            <Route path="/projects" element={<ProjectList />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/profile" element={<Navigate to="/history" replace />} />
             
