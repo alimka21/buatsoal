@@ -8,7 +8,7 @@ import { getFullAnswer } from '@/utils/formatAnswer';
 import { Loader2, Search, Filter, Database, Folder, Trash2, Plus, ChevronDown, ChevronUp, X } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { cn } from '@/utils/cn';
-import Latex from 'react-latex-next';
+import Latex from '@/components/Latex';
 import 'katex/dist/katex.min.css';
 
 export default function History() {

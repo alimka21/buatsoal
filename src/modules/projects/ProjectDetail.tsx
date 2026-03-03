@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 import { Document, Packer, LevelFormat, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 import { buildHeaderSection, buildQuestionsSection, buildAnswerSection, buildMatrixSection } from '@/services/docxBuilder';
-import Latex from 'react-latex-next';
+import Latex from '@/components/Latex';
 import 'katex/dist/katex.min.css';
 
 export default function ProjectDetail() {

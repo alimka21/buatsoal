@@ -9,7 +9,7 @@ import { useGeneratorStore } from '@/store/generatorStore';
 import { useAuthStore } from '@/store/authStore';
 import { generateImage } from '@/services/ai/imageModelService';
 import 'katex/dist/katex.min.css';
-import Latex from 'react-latex-next';
+import Latex from '@/components/Latex';
 import { buildHeaderSection, buildQuestionsSection, buildAnswerSection, buildMatrixSection } from '@/services/docxBuilder';
 
 interface ResultViewerProps {
