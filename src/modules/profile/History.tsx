@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/services/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { format } from 'date-fns';
-import { Loader2, Search, Filter, Database, Folder, Trash2, Plus } from 'lucide-react';
+import { getFullAnswer } from '@/utils/formatAnswer';
+import { Loader2, Search, Filter, Database, Folder, Trash2, Plus, ChevronDown, ChevronUp, X } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { cn } from '@/utils/cn';
 import Latex from 'react-latex-next';
@@ -11,28 +13,60 @@ import 'katex/dist/katex.min.css';
 
 export default function History() {
   const { session } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetProjectId = searchParams.get('projectId');
+  
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
+  const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
   const [showProjectModal, setShowProjectModal] = useState(false);
   
   const { projects, fetchProjects, addQuestionsToProject } = useProjectStore();
   const [filterSubject, setFilterSubject] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [filterTopic, setFilterTopic] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const QUESTION_TYPE_LABELS: Record<string, string> = {
+    multiple_choice: 'Pilihan Ganda',
+    complex_multiple_choice: 'Pilihan Ganda Kompleks',
+    true_false: 'Benar Salah',
+    essay: 'Uraian',
+    short_answer: 'Isian Singkat',
+    matching: 'Menjodohkan'
+  };
 
   const filteredQuestions = questions.filter(q => {
     const matchSubject = filterSubject ? q.subject === filterSubject : true;
     const matchType = filterType ? q.question_type === filterType : true;
+    const matchTopic = filterTopic ? q.topic === filterTopic : true;
     const matchSearch = searchQuery ? 
       q.content?.question?.toLowerCase().includes(searchQuery.toLowerCase()) || 
       q.topic?.toLowerCase().includes(searchQuery.toLowerCase()) 
       : true;
-    return matchSubject && matchType && matchSearch;
+    return matchSubject && matchType && matchTopic && matchSearch;
   });
+
+  // Calculate Pagination
+  const totalPages = Math.ceil(filteredQuestions.length / itemsPerPage);
+  const paginatedQuestions = filteredQuestions.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const uniqueSubjects = Array.from(new Set(questions.map(q => q.subject).filter(Boolean)));
   const uniqueTypes = Array.from(new Set(questions.map(q => q.question_type).filter(Boolean)));
+  const uniqueTopics = Array.from(new Set(questions.map(q => q.topic).filter(Boolean)));
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterSubject, filterType, filterTopic, searchQuery]);
 
   useEffect(() => {
     if (session) {
@@ -89,7 +123,8 @@ export default function History() {
     }
   };
 
-  const toggleSelection = (id: string) => {
+  const toggleSelection = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     const newSet = new Set(selectedQuestions);
     if (newSet.has(id)) {
       newSet.delete(id);
@@ -97,6 +132,16 @@ export default function History() {
       newSet.add(id);
     }
     setSelectedQuestions(newSet);
+  };
+
+  const toggleExpansion = (id: string) => {
+    const newSet = new Set(expandedQuestions);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setExpandedQuestions(newSet);
   };
 
   const selectAll = () => {
@@ -114,7 +159,24 @@ export default function History() {
       await addQuestionsToProject(projectId, Array.from(selectedQuestions));
       setShowProjectModal(false);
       setSelectedQuestions(new Set());
-      Swal.fire('Berhasil', `${selectedQuestions.size} soal berhasil ditambahkan ke proyek.`, 'success');
+      
+      // If we were targeting a specific project, maybe clear the param or just show success
+      if (targetProjectId) {
+          Swal.fire({
+              title: 'Berhasil',
+              text: `${selectedQuestions.size} soal berhasil ditambahkan ke proyek.`,
+              icon: 'success',
+              showCancelButton: true,
+              confirmButtonText: 'Kembali ke Proyek',
+              cancelButtonText: 'Tetap di Sini'
+          }).then((result) => {
+              if (result.isConfirmed) {
+                  window.history.back();
+              }
+          });
+      } else {
+          Swal.fire('Berhasil', `${selectedQuestions.size} soal berhasil ditambahkan ke proyek.`, 'success');
+      }
     } catch (error) {
       Swal.fire('Error', 'Gagal menambahkan soal ke proyek.', 'error');
     }
@@ -166,28 +228,53 @@ export default function History() {
             >
               <option value="">Semua Tipe Soal</option>
               {uniqueTypes.map(type => (
-                <option key={type as string} value={type as string}>{(type as string)?.replace(/_/g, ' ')}</option>
+                <option key={type as string} value={type as string}>{QUESTION_TYPE_LABELS[type as string] || (type as string)?.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+            <select
+              value={filterTopic}
+              onChange={(e) => setFilterTopic(e.target.value)}
+              className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors outline-none max-w-[200px] truncate"
+            >
+              <option value="">Semua Topik</option>
+              {uniqueTopics.map(topic => (
+                <option key={topic} value={topic}>{topic}</option>
               ))}
             </select>
           </div>
         </div>
         
-        {/* Action Bar */}
+          {/* Action Bar */}
         <div className="max-w-6xl mx-auto w-full mt-6 flex items-center justify-between">
-          <button
-            onClick={selectAll}
-            className="text-sm font-medium text-slate-600 hover:text-royal-blue-600 transition-colors"
-          >
-            {selectedQuestions.size === filteredQuestions.length && filteredQuestions.length > 0 ? 'Batal Pilih Semua' : 'Pilih Semua'}
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+                onClick={selectAll}
+                className="text-sm font-medium text-slate-600 hover:text-royal-blue-600 transition-colors"
+            >
+                {selectedQuestions.size === filteredQuestions.length && filteredQuestions.length > 0 ? 'Batal Pilih Semua' : 'Pilih Semua'}
+            </button>
+            
+            {targetProjectId && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-royal-blue-50 text-royal-blue-700 rounded-lg text-sm border border-royal-blue-100">
+                    <span className="font-medium">Mode Tambah ke Proyek</span>
+                    <button 
+                        onClick={() => setSearchParams({})}
+                        className="p-1 hover:bg-royal-blue-100 rounded-full transition-colors"
+                        title="Batalkan Mode Proyek"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+          </div>
           
           {selectedQuestions.size > 0 && (
             <button
-              onClick={() => setShowProjectModal(true)}
+              onClick={() => targetProjectId ? handleAddToProject(targetProjectId) : setShowProjectModal(true)}
               className="px-4 py-2 bg-royal-blue-600 hover:bg-royal-blue-700 text-white font-bold rounded-xl transition-colors flex items-center gap-2 text-sm shadow-md shadow-royal-blue-500/20 animate-in fade-in"
             >
               <Folder size={16} />
-              Tambah ke Proyek ({selectedQuestions.size})
+              {targetProjectId ? 'Simpan ke Proyek' : 'Tambah ke Proyek'} ({selectedQuestions.size})
             </button>
           )}
         </div>
@@ -204,29 +291,30 @@ export default function History() {
               <p className="text-sm mt-1">Mulai buat soal di menu Generator untuk mengisi bank soal.</p>
             </div>
           ) : (
-            filteredQuestions.map((q) => {
+            paginatedQuestions.map((q) => {
               const content = q.content;
               const isSelected = selectedQuestions.has(q.id);
+              const isExpanded = expandedQuestions.has(q.id);
               
               return (
                 <div 
                   key={q.id} 
                   className={cn(
-                    "bg-white rounded-2xl border p-6 shadow-sm transition-all flex gap-4 cursor-pointer group",
+                    "bg-white rounded-2xl border p-6 shadow-sm transition-all flex gap-4 cursor-pointer group relative",
                     isSelected ? "border-royal-blue-500 ring-1 ring-royal-blue-500 bg-royal-blue-50/10" : "border-slate-200 hover:border-royal-blue-300"
                   )}
-                  onClick={() => toggleSelection(q.id)}
+                  onClick={() => toggleExpansion(q.id)}
                 >
-                  <div className="pt-1">
+                  <div className="pt-1" onClick={(e) => e.stopPropagation()}>
                     <input 
                       type="checkbox" 
                       checked={isSelected}
-                      onChange={() => {}} // Handled by parent div click
+                      onChange={(e) => toggleSelection(q.id, e as any)}
                       className="w-5 h-5 rounded border-slate-300 text-royal-blue-600 focus:ring-royal-blue-500 cursor-pointer"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <div className="flex items-center gap-2 mb-3 flex-wrap pr-8">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-600">
                         {q.subject || 'Umum'}
                       </span>
@@ -234,22 +322,56 @@ export default function History() {
                         C{q.cognitive_level}
                       </span>
                       <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-orange-50 text-orange-700 capitalize">
-                        {q.question_type?.replace(/_/g, ' ')}
+                        {QUESTION_TYPE_LABELS[q.question_type] || q.question_type?.replace(/_/g, ' ')}
                       </span>
                       <span className="text-xs text-slate-400 ml-auto">
                         {format(new Date(q.created_at), 'dd MMM yyyy, HH:mm')}
                       </span>
                     </div>
                     
-                    <div className="text-slate-800 font-medium text-sm line-clamp-3 mb-2">
+                    <div className={cn(
+                        "text-slate-800 font-medium text-sm mb-2 transition-all",
+                        isExpanded ? "" : "line-clamp-3"
+                    )}>
                       <Latex delimiters={latexDelimiters}>{content.question}</Latex>
                     </div>
+
+                    {isExpanded && content.options && (
+                        <div className="mt-4 pl-4 space-y-2 border-l-2 border-slate-100">
+                            {content.options.map((opt: string, idx: number) => (
+                                <div key={idx} className="text-sm text-slate-600 flex gap-2">
+                                    <span className="font-bold text-slate-400">{String.fromCharCode(65 + idx)}.</span>
+                                    <span><Latex delimiters={latexDelimiters}>{opt}</Latex></span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     
-                    <div className="text-xs text-slate-500 truncate">
-                      <span className="font-semibold">Topik:</span> {q.topic}
+                    {isExpanded && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 text-sm">
+                            <div className="flex gap-2 mb-2">
+                                <span className="font-bold text-emerald-600">Jawaban:</span>
+                                <span className="text-slate-700"><Latex delimiters={latexDelimiters}>{getFullAnswer(content.correct_answer, content.options)}</Latex></span>
+                            </div>
+                            <div>
+                                <span className="font-bold text-slate-600 block mb-1">Pembahasan:</span>
+                                <div className="text-slate-600"><Latex delimiters={latexDelimiters}>{content.explanation}</Latex></div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="text-xs text-slate-500 truncate mt-3 flex items-center justify-between">
+                      <div><span className="font-semibold">Topik:</span> {q.topic}</div>
+                      <div className="text-royal-blue-600 text-xs font-medium flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                          {isExpanded ? (
+                              <>Sembunyikan <ChevronUp size={14} /></>
+                          ) : (
+                              <>Lihat Selengkapnya <ChevronDown size={14} /></>
+                          )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex-none flex flex-col items-end gap-2">
+                  <div className="flex-none flex flex-col items-end gap-2 absolute top-4 right-4">
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleDelete(q.id); }}
                       className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
@@ -263,6 +385,56 @@ export default function History() {
             })
           )}
         </div>
+        
+        {/* Pagination Controls */}
+        {filteredQuestions.length > 0 && (
+          <div className="max-w-6xl mx-auto w-full mt-6 flex items-center justify-between border-t border-slate-200 pt-4">
+            <div className="text-sm text-slate-500">
+              Menampilkan <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> sampai <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredQuestions.length)}</span> dari <span className="font-medium">{filteredQuestions.length}</span> soal
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-sm rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Sebelumnya
+              </button>
+              <div className="flex gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  // Logic to show window of pages around current page
+                  let p = i + 1;
+                  if (totalPages > 5) {
+                    if (currentPage > 3) p = currentPage - 2 + i;
+                    if (p > totalPages) p = totalPages - (4 - i);
+                  }
+                  
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={cn(
+                        "w-8 h-8 text-sm rounded-lg flex items-center justify-center transition-colors",
+                        currentPage === p 
+                          ? "bg-royal-blue-600 text-white font-medium" 
+                          : "hover:bg-slate-50 text-slate-600"
+                      )}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-sm rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Selanjutnya
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Project Selection Modal */}

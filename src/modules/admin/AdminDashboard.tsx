@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/services/supabaseClient';
 import { Loader2, Trash2, Edit, Save, X, Search, UserPlus, Settings as SettingsIcon, Users } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -22,6 +22,10 @@ export default function AdminDashboard() {
   const [newUserForm, setNewUserForm] = useState({ full_name: '', email: '', password: '123456' });
   const [activeTab, setActiveTab] = useState<'users' | 'settings'>('users');
   const [subscriptionLink, setSubscriptionLink] = useState('https://s.id/alimkadigital');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   const [debugInfo, setDebugInfo] = useState<any>(null);
 
@@ -102,15 +106,15 @@ export default function AdminDashboard() {
 
       // 2. Fetch question counts
       const { data: questions, error: questionsError } = await supabase
-        .from('generated_questions')
-        .select('created_by');
+        .from('questions')
+        .select('user_id');
 
       if (questionsError) throw questionsError;
 
       // Count questions per user
       const questionCounts: Record<string, number> = {};
       questions?.forEach((q) => {
-        questionCounts[q.created_by] = (questionCounts[q.created_by] || 0) + 1;
+        questionCounts[q.user_id] = (questionCounts[q.user_id] || 0) + 1;
       });
 
       // Merge data
@@ -249,6 +253,24 @@ export default function AdminDashboard() {
     (user.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredUsers.length / rowsPerPage);
+  const paginatedUsers = filteredUsers.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage
+  );
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+        setCurrentPage(newPage);
+    }
+  };
+
+  const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      setRowsPerPage(Number(e.target.value));
+      setCurrentPage(1); // Reset to first page
+  };
 
   if (loading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-royal-blue-600" /></div>;
 
@@ -405,9 +427,9 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredUsers.map((user, index) => (
+              {paginatedUsers.map((user, index) => (
                 <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="px-6 py-4 text-slate-500">{index + 1}</td>
+                  <td className="px-6 py-4 text-slate-500">{(currentPage - 1) * rowsPerPage + index + 1}</td>
                   
                   {/* Name Column */}
                   <td className="px-6 py-4 font-medium text-slate-900">
@@ -487,7 +509,8 @@ export default function AdminDashboard() {
                             <Trash2 size={18} />
                           </button>
                         </>
-                      )}
+                      )
+                    }
                     </div>
                   </td>
                 </tr>
@@ -501,6 +524,46 @@ export default function AdminDashboard() {
               )}
             </tbody>
           </table>
+          
+          {/* Pagination Controls */}
+          {filteredUsers.length > 0 && (
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <span>Tampilkan</span>
+                    <select 
+                        value={rowsPerPage} 
+                        onChange={handleRowsPerPageChange}
+                        className="border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-royal-blue-500"
+                    >
+                        <option value={15}>15</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                    </select>
+                    <span>data per halaman</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 border border-slate-300 rounded bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                        Prev
+                    </button>
+                    <span className="text-sm text-slate-600">
+                        Halaman {currentPage} dari {totalPages}
+                    </span>
+                    <button 
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1 border border-slate-300 rounded bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                        Next
+                    </button>
+                </div>
+            </div>
+          )}
         </div>
         )}
         </div>

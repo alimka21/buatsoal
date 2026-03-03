@@ -188,7 +188,7 @@ export default function ProjectDetail() {
           </div>
           <div className="ml-auto flex gap-3">
             <Link 
-              to="/history"
+              to={`/history?projectId=${id}`}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors flex items-center gap-2 text-sm"
             >
               <Plus size={16} /> Tambah Soal dari Riwayat

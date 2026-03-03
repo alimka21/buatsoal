@@ -1,5 +1,6 @@
 import { Paragraph, TextRun, AlignmentType, ImageRun, Table, TableRow, TableCell, BorderStyle, WidthType, TableLayoutType, TabStopType, TabStopPosition } from 'docx';
 import { formatQuestionText } from '@/utils/formatQuestionText';
+import { getFullAnswer } from '@/utils/formatAnswer';
 import { base64ToUint8Array } from '@/utils/imageUtils';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -18,17 +19,17 @@ export function buildHeaderSection(result: any, formData: any) {
         new TextRun({
           text: "DAFTAR SOAL",
           bold: true,
-          size: 48, // 24pt
+          size: 42, // 21pt
         })
       ],
       alignment: AlignmentType.CENTER,
-      spacing: { after: 200, line: 360 },
+      spacing: { after: 0, line: 360 },
     }),
     new Paragraph({
       children: [
         new TextRun({
           text: `Mata Pelajaran: ${result.subject || 'Biologi'}`,
-          size: 48, // 24pt
+          size: 24, // 12pt
         })
       ],
       alignment: AlignmentType.CENTER,
@@ -45,7 +46,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
           text: `Bagian ${TYPE_LABELS[type] || type}`,
           bold: true,
           color: "000000",
-          size: 48, // 24pt
+          size: 24, // 12pt
         })
       ],
       spacing: { before: 300, after: 200, line: 360 },
@@ -66,28 +67,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
         const docElements = [];
 
         if (q.stimulus) {
-          if (typeof q.stimulus === 'string') {
-            // Legacy string stimulus
-            const stimulusRuns = q.stimulus.split('\n').map((line: string, index: number) => {
-                return new TextRun({
-                    text: line.trim(),
-                    size: 24, // 12pt
-                    break: index > 0 ? 1 : 0
-                });
-            });
-
-            docElements.push(
-              new Paragraph({
-                children: stimulusRuns,
-                numbering: {
-                  reference: "question-numbering",
-                  level: 0,
-                },
-                spacing: { before: 200, after: 100, line: 360 },
-                alignment: AlignmentType.JUSTIFIED,
-              })
-            );
-          } else if (q.stimulus.type === 'text') {
+          if (q.stimulus.type === 'text') {
             // Text Stimulus
             const stimulusRuns = q.stimulus.content.split('\n').map((line: string, index: number) => {
                 return new TextRun({
@@ -105,7 +85,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                   level: 0,
                 },
                 spacing: { before: 200, after: 100, line: 360 },
-                alignment: AlignmentType.JUSTIFIED,
+                alignment: AlignmentType.LEFT,
               })
             );
           } else if (q.stimulus.type === 'list') {
@@ -126,7 +106,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                   level: 0,
                 },
                 spacing: { before: 200, after: 100, line: 360 },
-                alignment: AlignmentType.JUSTIFIED,
+                alignment: AlignmentType.LEFT,
               })
             );
 
@@ -219,7 +199,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
              );
 
              // Check if chart image is generated
-             const chartKey = `${q.question}_stimulus_chart`;
+             const chartKey = `${q.id}_stimulus_chart`;
              if (imageStates[chartKey]?.status === 'done' && imageStates[chartKey]?.base64) {
                  docElements.push(
                     new Paragraph({
@@ -254,7 +234,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
               children: questionRuns,
               indent: { left: 720 }, // Align with text of numbered item
               spacing: { before: 100, after: 100, line: 360 }, // 1.5 Line Spacing
-              alignment: AlignmentType.JUSTIFIED,
+              alignment: AlignmentType.LEFT,
             })
           );
         } else {
@@ -266,18 +246,18 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                 level: 0,
               },
               spacing: { before: 200, after: 100, line: 360 }, // 1.5 Line Spacing
-              alignment: AlignmentType.JUSTIFIED,
+              alignment: AlignmentType.LEFT,
             })
           );
         }
 
         return [
           ...docElements,
-          ...(imageStates[q.question]?.status === 'done' && imageStates[q.question]?.base64 ? [
+          ...(imageStates[q.id]?.status === 'done' && imageStates[q.id]?.base64 ? [
             new Paragraph({
               children: [
                 new ImageRun({
-                  data: base64ToUint8Array(imageStates[q.question].base64!),
+                  data: base64ToUint8Array(imageStates[q.id].base64!),
                   transformation: {
                     width: 200,
                     height: 200,
@@ -499,12 +479,12 @@ export function buildAnswerSection(groupedQuestions: any) {
           new TextRun({
               text: "KUNCI JAWABAN & PEMBAHASAN",
               bold: true,
-              size: 48, // 24pt
+              size: 42, // 21pt
           })
       ],
       alignment: AlignmentType.CENTER,
       pageBreakBefore: true,
-      spacing: { before: 400, after: 200, line: 360 },
+      spacing: { before: 400, after: 0, line: 360 },
     }),
     ...Object.entries(groupedQuestions).flatMap(([type, questions]: [string, any]) => [
       new Paragraph({
@@ -513,7 +493,7 @@ export function buildAnswerSection(groupedQuestions: any) {
                 text: `Bagian ${TYPE_LABELS[type] || type}`,
                 bold: true,
                 color: "000000",
-                size: 48, // 24pt
+                size: 24, // 12pt
             })
         ],
         spacing: { before: 300, after: 200, line: 360 },
@@ -523,7 +503,7 @@ export function buildAnswerSection(groupedQuestions: any) {
           new Paragraph({
             children: [
               new TextRun({
-                text: `Jawaban: ${q.correct_answer}`,
+                text: `Jawaban: ${getFullAnswer(q.correct_answer, q.options)}`,
                 bold: true,
                 size: 24, // 12pt
               }),
@@ -560,7 +540,7 @@ export function buildMatrixSection(groupedQuestions: any, formData: any) {
           new TextRun({
               text: "KISI-KISI SOAL",
               bold: true,
-              size: 48, // 24pt
+              size: 42, // 21pt
           })
       ],
       alignment: AlignmentType.CENTER,

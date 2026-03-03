@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAuthStore } from '@/store/authStore';
 import { Link } from 'react-router-dom';
-import { Folder, Plus, Trash2, Calendar, BookOpen, GraduationCap } from 'lucide-react';
+import { Folder, Plus, Trash2, Calendar, BookOpen, GraduationCap, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import Swal from 'sweetalert2';
@@ -168,8 +168,11 @@ export default function ProjectList() {
                 {projects.map((project) => (
                   <tr key={project.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <Link to={`/projects/${project.id}`} className="block">
-                        <div className="font-bold text-slate-800 group-hover:text-royal-blue-600 transition-colors">{project.name}</div>
+                      <Link to={`/projects/${project.id}`} className="block group">
+                        <div className="flex items-center gap-2">
+                            <div className="font-bold text-slate-800 group-hover:text-royal-blue-600 transition-colors">{project.name}</div>
+                            <Edit size={14} className="text-slate-400 group-hover:text-royal-blue-500 opacity-0 group-hover:opacity-100 transition-all" />
+                        </div>
                         {project.description && <div className="text-sm text-slate-500 mt-1 truncate max-w-xs">{project.description}</div>}
                       </Link>
                     </td>

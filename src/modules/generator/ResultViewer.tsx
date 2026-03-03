@@ -1,4 +1,5 @@
 import { Copy, Printer, Download, FileText, CheckCircle, Grid, Save, Image as ImageIcon, Trash2, Play, Loader2, Package, Plus, Folder } from 'lucide-react';
+import { getFullAnswer } from '@/utils/formatAnswer';
 import Swal from 'sweetalert2';
 import { useState, useEffect } from 'react';
 import { cn } from '@/utils/cn';
@@ -38,25 +39,27 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
     }, 600);
   };
 
-  const handleImageClick = async (questionText: string, imagePrompt: string) => {
-    const currentState = imageStates[questionText] || { status: 'idle', visible: false };
+  const handleImageClick = async (questionId: string, imagePrompt: string) => {
+    const currentState = imageStates[questionId] || { status: 'idle', visible: false };
+
+    if (currentState.status === 'loading') return;
 
     if (currentState.status === 'done') {
-      setImageStates(prev => ({ ...prev, [questionText]: { ...prev[questionText], visible: !prev[questionText].visible } }));
+      setImageStates(prev => ({ ...prev, [questionId]: { ...prev[questionId], visible: !prev[questionId].visible } }));
       return;
     }
 
     if (currentState.status === 'idle' || currentState.status === 'error') {
-      setImageStates(prev => ({ ...prev, [questionText]: { status: 'loading', visible: true } }));
+      setImageStates(prev => ({ ...prev, [questionId]: { status: 'loading', visible: true } }));
       try {
         const { imageBase64 } = await generateImage(imagePrompt, formData?.apiKey);
         if (imageBase64) {
-          setImageStates(prev => ({ ...prev, [questionText]: { status: 'done', base64: imageBase64, visible: true } }));
+          setImageStates(prev => ({ ...prev, [questionId]: { status: 'done', base64: imageBase64, visible: true } }));
         } else {
-          setImageStates(prev => ({ ...prev, [questionText]: { status: 'error', visible: true } }));
+          setImageStates(prev => ({ ...prev, [questionId]: { status: 'error', visible: true } }));
         }
       } catch (e) {
-        setImageStates(prev => ({ ...prev, [questionText]: { status: 'error', visible: true } }));
+        setImageStates(prev => ({ ...prev, [questionId]: { status: 'error', visible: true } }));
       }
     }
   };
@@ -134,6 +137,9 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                   paragraph: {
                     indent: { left: 720, hanging: 360 },
                   },
+                  run: {
+                      size: 24, // 12pt
+                  }
                 },
               },
               {
@@ -145,6 +151,9 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                   paragraph: {
                     indent: { left: 1440, hanging: 360 },
                   },
+                  run: {
+                      size: 24, // 12pt
+                  }
                 },
               },
             ],
@@ -161,6 +170,9 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                   paragraph: {
                     indent: { left: 1440, hanging: 360 },
                   },
+                  run: {
+                      size: 24, // 12pt
+                  }
                 },
               },
             ],
@@ -177,6 +189,9 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                   paragraph: {
                     indent: { left: 720, hanging: 360 },
                   },
+                  run: {
+                      size: 24, // 12pt
+                  }
                 },
               },
             ],
@@ -290,7 +305,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                     <div className="space-y-8">
                       {questions.map((q: any) => {
                         globalQuestionIndex++;
-                        const imgState = imageStates[q.question];
+                        const imgState = imageStates[q.id];
                         return (
                           <div key={globalQuestionIndex} className="break-inside-avoid relative group">
                             <div className="flex gap-2 mb-2 p-2 rounded-lg transition-colors hover:bg-slate-50">
@@ -298,79 +313,73 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                               <div className="flex-1">
                                 {q.stimulus && (
                                   <div className="mb-4 text-justify">
-                                    {typeof q.stimulus === 'string' ? (
-                                      <Latex delimiters={latexDelimiters}>{q.stimulus}</Latex>
-                                    ) : (
-                                      <>
-                                        {q.stimulus.type === 'text' && (
-                                          <Latex delimiters={latexDelimiters}>{q.stimulus.content}</Latex>
-                                        )}
-                                        {q.stimulus.type === 'list' && (
-                                          <div className="my-2">
-                                            <p className="mb-2"><Latex delimiters={latexDelimiters}>{q.stimulus.content}</Latex></p>
-                                            <ul className="list-disc pl-5 space-y-1">
-                                              {q.stimulus.items?.map((item: string, idx: number) => (
-                                                <li key={idx}><Latex delimiters={latexDelimiters}>{item}</Latex></li>
+                                    {q.stimulus.type === 'text' && (
+                                      <Latex delimiters={latexDelimiters}>{q.stimulus.content}</Latex>
+                                    )}
+                                    {q.stimulus.type === 'list' && (
+                                      <div className="my-2">
+                                        <p className="mb-2"><Latex delimiters={latexDelimiters}>{q.stimulus.content}</Latex></p>
+                                        <ul className="list-disc pl-5 space-y-1">
+                                          {q.stimulus.items?.map((item: string, idx: number) => (
+                                            <li key={idx}><Latex delimiters={latexDelimiters}>{item}</Latex></li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    {q.stimulus.type === 'table' && (
+                                      <div className="overflow-x-auto my-2">
+                                        <table className="min-w-full border-collapse border border-slate-300 text-sm">
+                                          <thead>
+                                            <tr>
+                                              {q.stimulus.headers?.map((h: string, idx: number) => (
+                                                <th key={idx} className="border border-slate-300 bg-slate-100 px-3 py-2 text-left font-semibold">
+                                                  <Latex delimiters={latexDelimiters}>{h}</Latex>
+                                                </th>
                                               ))}
-                                            </ul>
-                                          </div>
-                                        )}
-                                        {q.stimulus.type === 'table' && (
-                                          <div className="overflow-x-auto my-2">
-                                            <table className="min-w-full border-collapse border border-slate-300 text-sm">
-                                              <thead>
-                                                <tr>
-                                                  {q.stimulus.headers?.map((h: string, idx: number) => (
-                                                    <th key={idx} className="border border-slate-300 bg-slate-100 px-3 py-2 text-left font-semibold">
-                                                      <Latex delimiters={latexDelimiters}>{h}</Latex>
-                                                    </th>
-                                                  ))}
-                                                </tr>
-                                              </thead>
-                                              <tbody>
-                                                {q.stimulus.rows?.map((row: string[], rIdx: number) => (
-                                                  <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                                                    {row.map((cell: string, cIdx: number) => (
-                                                      <td key={cIdx} className="border border-slate-300 px-3 py-2">
-                                                        <Latex delimiters={latexDelimiters}>{cell}</Latex>
-                                                      </td>
-                                                    ))}
-                                                  </tr>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {q.stimulus.rows?.map((row: string[], rIdx: number) => (
+                                              <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                                                {row.map((cell: string, cIdx: number) => (
+                                                  <td key={cIdx} className="border border-slate-300 px-3 py-2">
+                                                    <Latex delimiters={latexDelimiters}>{cell}</Latex>
+                                                  </td>
                                                 ))}
-                                              </tbody>
-                                            </table>
-                                          </div>
-                                        )}
-                                        {q.stimulus.type === 'chart' && (
-                                          <div className="my-4 p-4 border border-slate-200 rounded-lg bg-slate-50 flex flex-col items-center">
-                                            <p className="text-sm text-slate-600 mb-3 italic text-center">{q.stimulus.description}</p>
-                                            
-                                            {imageStates[`${q.question}_stimulus_chart`]?.status === 'done' && imageStates[`${q.question}_stimulus_chart`]?.base64 ? (
-                                              <img 
-                                                src={`data:image/png;base64,${imageStates[`${q.question}_stimulus_chart`].base64}`} 
-                                                alt="Chart Stimulus" 
-                                                className="max-w-full h-auto max-h-64 rounded-lg border border-slate-200 mb-2"
-                                              />
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                    {q.stimulus.type === 'chart' && (
+                                      <div className="my-4 p-4 border border-slate-200 rounded-lg bg-slate-50 flex flex-col items-center">
+                                        <p className="text-sm text-slate-600 mb-3 italic text-center">{q.stimulus.description}</p>
+                                        
+                                        {imageStates[`${q.id}_stimulus_chart`]?.status === 'done' && imageStates[`${q.id}_stimulus_chart`]?.base64 ? (
+                                          <img 
+                                            src={`data:image/png;base64,${imageStates[`${q.id}_stimulus_chart`].base64}`} 
+                                            alt="Chart Stimulus" 
+                                            className="max-w-full h-auto max-h-64 rounded-lg border border-slate-200 mb-2"
+                                          />
+                                        ) : (
+                                          <button 
+                                            onClick={() => handleImageClick(`${q.id}_stimulus_chart`, q.stimulus.image_prompt)}
+                                            className="px-4 py-2 rounded-lg bg-royal-blue-600 hover:bg-royal-blue-700 text-white transition-colors text-sm font-medium flex items-center gap-2"
+                                          >
+                                            {imageStates[`${q.id}_stimulus_chart`]?.status === 'loading' ? (
+                                              <Loader2 size={16} className="animate-spin" />
                                             ) : (
-                                              <button 
-                                                onClick={() => handleImageClick(`${q.question}_stimulus_chart`, q.stimulus.image_prompt)}
-                                                className="px-4 py-2 rounded-lg bg-royal-blue-600 hover:bg-royal-blue-700 text-white transition-colors text-sm font-medium flex items-center gap-2"
-                                              >
-                                                {imageStates[`${q.question}_stimulus_chart`]?.status === 'loading' ? (
-                                                  <Loader2 size={16} className="animate-spin" />
-                                                ) : (
-                                                  <ImageIcon size={16} />
-                                                )}
-                                                Generate Grafik
-                                              </button>
+                                              <ImageIcon size={16} />
                                             )}
-                                            
-                                            {imageStates[`${q.question}_stimulus_chart`]?.status === 'error' && (
-                                              <p className="text-xs text-red-500 mt-2">Gagal membuat grafik. Coba lagi.</p>
-                                            )}
-                                          </div>
+                                            Generate Grafik
+                                          </button>
                                         )}
-                                      </>
+                                        
+                                        {imageStates[`${q.id}_stimulus_chart`]?.status === 'error' && (
+                                          <p className="text-xs text-red-500 mt-2">Gagal membuat grafik. Coba lagi.</p>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 )}
@@ -378,7 +387,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                                   <Latex delimiters={latexDelimiters}>{q.question}</Latex>
                                   {q.image_prompt && (
                                     <button 
-                                      onClick={() => handleImageClick(q.question, q.image_prompt)}
+                                      onClick={() => handleImageClick(q.id, q.image_prompt)}
                                       className="ml-2 inline-flex items-center justify-center px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors align-middle gap-1"
                                       title="Generate/Toggle Gambar"
                                     >
@@ -501,7 +510,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                               <span className="font-bold text-slate-900">{globalAnswerIndex}.</span>
                               <div className="flex-1">
                                 <div className="mb-2">
-                                  <span className="font-bold text-slate-900">Jawaban: <Latex delimiters={latexDelimiters}>{q.correct_answer}</Latex></span>
+                                  <span className="font-bold text-slate-900">Jawaban: <Latex delimiters={latexDelimiters}>{getFullAnswer(q.correct_answer, q.options)}</Latex></span>
                                 </div>
                                 <div className="text-sm text-slate-800 bg-white p-0 rounded border-none">
                                   <span className="font-semibold block mb-1">Pembahasan:</span>

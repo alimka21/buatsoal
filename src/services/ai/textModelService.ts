@@ -28,6 +28,59 @@ function cleanAndParseJSON(jsonString: string): any {
 }
 
 // 2️⃣ PISAHKAN LOGIKA TIPE SOAL (VALIDATOR)
+function normalizeAndEnforceContract(q: any, index: number) {
+  // 1️⃣ ID
+  const id = typeof q.id === "number" ? q.id : index + 1;
+
+  // 2️⃣ Stimulus normalization
+  let stimulus = null;
+  if (typeof q.stimulus === "string") {
+    stimulus = {
+      type: "text",
+      content: q.stimulus
+    };
+  } else if (typeof q.stimulus === "object" && q.stimulus !== null) {
+    stimulus = q.stimulus;
+  }
+
+  // 3️⃣ Force nullable fields
+  const image_prompt = q.image_prompt || null;
+  const options = Array.isArray(q.options) ? q.options : null;
+  const pairs = Array.isArray(q.pairs) ? q.pairs : null;
+
+  // 4️⃣ correct_answer normalization
+  let correct_answer = "";
+  if (Array.isArray(q.correct_answer)) {
+    correct_answer = q.correct_answer.join(", ");
+  } else {
+    correct_answer = q.correct_answer || "";
+  }
+
+  // 5️⃣ explanation fallback
+  const explanation = q.explanation || "Pembahasan belum tersedia.";
+
+  // 6️⃣ metadata enforce
+  const _type = q._type || "multiple_choice";
+  const _topic = typeof q._topic === "string" ? q._topic : "";
+  const _learning_objective = q._learning_objective || q._learning_objectives || "";
+  const _cognitive_level = Number(q._cognitive_level) || 1;
+
+  return {
+    id,
+    question: q.question || "",
+    stimulus,
+    image_prompt,
+    options,
+    pairs,
+    correct_answer,
+    explanation,
+    _type,
+    _topic,
+    _learning_objective,
+    _cognitive_level
+  };
+}
+
 function validateQuestions(questions: any[], requestedTypes: string | string[], count: number) {
     if (!Array.isArray(questions)) {
         throw new Error("Result 'questions' is not an array.");
@@ -104,6 +157,11 @@ function validateQuestions(questions: any[], requestedTypes: string | string[], 
                 if (q.stimulus.type === 'table' && (!q.stimulus.headers || !q.stimulus.rows)) throw new Error(`Question ${idx + 1} (Table Stimulus) missing headers or rows.`);
                 if (q.stimulus.type === 'chart' && (!q.stimulus.description || !q.stimulus.image_prompt)) throw new Error(`Question ${idx + 1} (Chart Stimulus) missing description or image_prompt.`);
             }
+            
+            // Check for potential duplication
+            if (q.stimulus.content && q.question.includes(q.stimulus.content.slice(0, 30))) {
+               console.warn(`Potential duplication detected in Question ${idx + 1}: Question text might contain stimulus content.`);
+            }
         }
     });
     
@@ -158,6 +216,10 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       
       IMPORTANT: Adjust the complexity of the questions and language based strictly on the "Level" (Jenjang) and "Class" (Kelas). 
       For example, Grade 1 SD questions must be very simple and concrete, while SMA questions should be more complex and abstract.
+      
+      LANGUAGE RULE:
+      - IF THE SUBJECT IS 'BAHASA INGGRIS' OR 'ENGLISH', THE ENTIRE CONTENT (QUESTIONS, STIMULUS, OPTIONS) MUST BE IN ENGLISH.
+      - For other subjects, use Indonesian (Bahasa Indonesia) unless specified otherwise.
       
       DISTRIBUTION INSTRUCTIONS:
       1. Distribute the ${params.count} questions evenly across the provided Topics and Learning Objectives.
@@ -322,6 +384,11 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
 
     let currentDraft = cleanAndParseJSON(currentDraftText);
 
+    // Normalize IDs and Stimulus immediately after parsing
+    if (currentDraft && Array.isArray(currentDraft.questions)) {
+        currentDraft.questions = currentDraft.questions.map((q: any, i: number) => normalizeAndEnforceContract(q, i));
+    }
+
     // Calculate max cognitive level to determine if refinement is needed
     let maxCognitiveLevel = 0;
     if (Array.isArray(params.cognitive_level)) {
@@ -353,14 +420,47 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
         return { result: currentDraft, retries: 0 };
     }
 
-    console.log(`Step 2: Adaptive Refinement (Refining ${questionsToRefine.length} HOTS questions)...`);
+    console.log(`Step 2: Adaptive Refinement (Refining ${questionsToRefine.length} HOTS questions in batches)...`);
     if (onProgress) onProgress(60);
 
-    const refineEvalPrompt = `
+    let refinedQuestions: any[] = [];
+    let totalRetries = retries;
+    const BATCH_SIZE = 5;
+
+    // Helper function for model fallback
+    const generateWithFallback = async (prompt: string) => {
+        let lastError;
+        for (const model of modelsToTry) {
+            try {
+                console.log(`Attempting refinement with model: ${model}`);
+                const response = await ai.models.generateContent({
+                    model: model,
+                    contents: prompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        temperature: 0.5
+                    }
+                });
+                if (response && response.text) {
+                    return response;
+                }
+            } catch (e: any) {
+                console.warn(`Refinement failed with model ${model}:`, e.message);
+                lastError = e;
+            }
+        }
+        throw lastError || new Error("All models failed during refinement");
+    };
+
+    for (let i = 0; i < questionsToRefine.length; i += BATCH_SIZE) {
+        const batch = questionsToRefine.slice(i, i + BATCH_SIZE);
+        console.log(`Refining batch ${i / BATCH_SIZE + 1} (${batch.length} questions)...`);
+        
+        const refineEvalPrompt = `
 Role: Strict Educational Evaluator & HOTS Expert.
 
 TASK:
-1. Evaluate the ${questionsToRefine.length} draft questions below.
+1. Evaluate the ${batch.length} draft questions below.
 2. Refine them to meet high quality standards (Score >= 24/30).
 3. Return ONLY the refined questions.
 
@@ -378,7 +478,7 @@ RUBRIC:
 7. Stimulus-Question Separation: Check that the question does NOT repeat or duplicate stimulus text. Penalize repetition.
 
 DRAFT QUESTIONS (JSON):
-${JSON.stringify(questionsToRefine)}
+${JSON.stringify(batch)}
 
 OUTPUT JSON SCHEMA:
 {
@@ -410,53 +510,38 @@ OUTPUT JSON SCHEMA:
     }
   ]
 }
-    `;
+        `;
 
-    // Helper function for model fallback
-    const generateWithFallback = async () => {
-        let lastError;
-        for (const model of modelsToTry) {
-            try {
-                console.log(`Attempting refinement with model: ${model}`);
-                const response = await ai.models.generateContent({
-                    model: model,
-                    contents: refineEvalPrompt,
-                    config: {
-                        responseMimeType: "application/json",
-                        temperature: 0.5
-                    }
+        try {
+            const refineEvalResponse = await generateWithFallback(refineEvalPrompt);
+            const refineEvalText = refineEvalResponse.text;
+            if (!refineEvalText) throw new Error("No response from Gemini during refinement/evaluation");
+            
+            const result = cleanAndParseJSON(refineEvalText);
+            
+            if (result.refined_questions && Array.isArray(result.refined_questions)) {
+                let batchRefined = result.refined_questions.map((q: any, idx: number) => {
+                    const normalized = normalizeAndEnforceContract(q, idx);
+                    // Try to match with original if possible, else just assign
+                    normalized.id = batch[idx]?.id || normalized.id;
+                    return normalized;
                 });
-                if (response && response.text) {
-                    return response;
-                }
-            } catch (e: any) {
-                console.warn(`Refinement failed with model ${model}:`, e.message);
-                lastError = e;
+                refinedQuestions.push(...batchRefined);
+            } else {
+                console.warn(`Refinement returned invalid structure for batch, using original questions.`);
+                refinedQuestions.push(...batch);
             }
+
+        } catch (err) {
+            console.error(`Error refining questions batch:`, err);
+            refinedQuestions.push(...batch); // Fallback to original if refinement fails
         }
-        throw lastError || new Error("All models failed during refinement");
-    };
-
-    let refinedQuestions: any[] = [];
-    let totalRetries = retries;
-
-    try {
-        const refineEvalResponse = await generateWithFallback();
-        const refineEvalText = refineEvalResponse.text;
-        if (!refineEvalText) throw new Error("No response from Gemini during refinement/evaluation");
         
-        const result = cleanAndParseJSON(refineEvalText);
-        
-        if (result.refined_questions && Array.isArray(result.refined_questions)) {
-            refinedQuestions = result.refined_questions;
-        } else {
-            console.warn(`Refinement returned invalid structure, using original questions.`);
-            refinedQuestions = questionsToRefine;
+        // Update progress
+        if (onProgress) {
+            const progress = 60 + Math.floor(((i + BATCH_SIZE) / questionsToRefine.length) * 30);
+            onProgress(Math.min(progress, 90));
         }
-
-    } catch (err) {
-        console.error(`Error refining questions:`, err);
-        refinedQuestions = questionsToRefine; // Fallback to original if refinement fails
     }
 
     // Merge refined questions back with skipped questions

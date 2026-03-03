@@ -230,10 +230,19 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
     }
   };
 
-  const handleAddTopic = () => {
-    const objectivesString = newTopic.learning_objectives.filter(obj => obj.trim()).join('\n');
+  const capitalizeFirstLetter = (string: string) => {
+    if (!string) return string;
+    return string.charAt(0).toUpperCase() + string.slice(1);
+  };
 
-    if (!newTopic.topic || !objectivesString) {
+  const handleAddTopic = () => {
+    const topic = capitalizeFirstLetter(newTopic.topic);
+    const objectivesString = newTopic.learning_objectives
+        .filter(obj => obj.trim())
+        .map(obj => capitalizeFirstLetter(obj.trim()))
+        .join('\n');
+
+    if (!topic || !objectivesString) {
       Swal.fire('Error', 'Topik dan minimal satu Tujuan Pembelajaran harus diisi', 'error');
       return;
     }
@@ -243,7 +252,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
     // Simulate async operation for better UX
     setTimeout(() => {
         const topicData = {
-            topic: newTopic.topic,
+            topic: topic,
             learning_objectives: objectivesString
         };
         
