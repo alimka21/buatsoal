@@ -2,6 +2,7 @@ import { Paragraph, TextRun, AlignmentType, ImageRun, Table, TableRow, TableCell
 import { formatQuestionText } from '@/utils/formatQuestionText';
 import { getFullAnswer } from '@/utils/formatAnswer';
 import { base64ToUint8Array } from '@/utils/imageUtils';
+import { stripLatex } from '@/utils/latexUtils';
 
 const TYPE_LABELS: Record<string, string> = {
   multiple_choice: 'Pilihan Ganda',
@@ -54,7 +55,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
     ...questions.flatMap((q: any) => {
       try {
         // Optimize Question Text Formatting
-        const processedQuestion = formatQuestionText(q.question);
+        const processedQuestion = stripLatex(formatQuestionText(q.question));
 
         const questionRuns = processedQuestion.split('\n').map((line: string, index: number) => {
             return new TextRun({
@@ -69,7 +70,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
         if (q.stimulus) {
           if (q.stimulus.type === 'text') {
             // Text Stimulus
-            const stimulusRuns = q.stimulus.content.split('\n').map((line: string, index: number) => {
+            const stimulusRuns = stripLatex(q.stimulus.content).split('\n').map((line: string, index: number) => {
                 return new TextRun({
                     text: line.trim(),
                     size: 24, // 12pt
@@ -90,7 +91,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
             );
           } else if (q.stimulus.type === 'list') {
             // List Stimulus
-            const stimulusRuns = q.stimulus.content.split('\n').map((line: string, index: number) => {
+            const stimulusRuns = stripLatex(q.stimulus.content).split('\n').map((line: string, index: number) => {
                 return new TextRun({
                     text: line.trim(),
                     size: 24, // 12pt
@@ -114,7 +115,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                 q.stimulus.items.forEach((item: string) => {
                     docElements.push(
                         new Paragraph({
-                            children: [new TextRun({ text: item, size: 24 })],
+                            children: [new TextRun({ text: stripLatex(item), size: 24 })],
                             bullet: {
                                 level: 0
                             },
@@ -145,7 +146,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                     new TableRow({
                         children: q.stimulus.headers.map((h: string) => 
                             new TableCell({
-                                children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
+                                children: [new Paragraph({ children: [new TextRun({ text: stripLatex(h), bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
                                 shading: { fill: "F3F4F6" }, // Light gray
                                 margins: { top: 100, bottom: 100, left: 100, right: 100 },
                             })
@@ -160,7 +161,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                         new TableRow({
                             children: row.map((cell: string) => 
                                 new TableCell({
-                                    children: [new Paragraph({ children: [new TextRun({ text: cell, size: 24 })] })],
+                                    children: [new Paragraph({ children: [new TextRun({ text: stripLatex(cell), size: 24 })] })],
                                     margins: { top: 100, bottom: 100, left: 100, right: 100 },
                                 })
                             )
@@ -189,7 +190,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
              // Chart Stimulus
              docElements.push(
                 new Paragraph({
-                    children: [new TextRun({ text: `Perhatikan grafik berikut: ${q.stimulus.description || ''}`, size: 24 })],
+                    children: [new TextRun({ text: stripLatex(`Perhatikan grafik berikut: ${q.stimulus.description || ''}`), size: 24 })],
                     numbering: {
                         reference: "question-numbering",
                         level: 0,
@@ -320,10 +321,10 @@ export function buildMatchingTable(q: any) {
                   new TableRow({
                       children: [
                           new TableCell({
-                              children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${pair.left}`, size: 24 })], spacing: { line: 360 } })], 
+                              children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${stripLatex(pair.left)}`, size: 24 })], spacing: { line: 360 } })], 
                           }),
                           new TableCell({
-                              children: [new Paragraph({ children: [new TextRun({ text: `${String.fromCharCode(65 + i)}. ${pair.right}`, size: 24 })], spacing: { line: 360 } })], 
+                              children: [new Paragraph({ children: [new TextRun({ text: `${String.fromCharCode(65 + i)}. ${stripLatex(pair.right)}`, size: 24 })], spacing: { line: 360 } })], 
                           }),
                       ],
                   })
@@ -372,7 +373,7 @@ export function buildMatchingTable(q: any) {
                 new TableRow({
                     children: [
                         new TableCell({
-                            children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${opt.split(' - ')[0] || ''}`, size: 24 })], spacing: { line: 360 } })], 
+                            children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${stripLatex(opt.split(' - ')[0] || '')}`, size: 24 })], spacing: { line: 360 } })], 
                         }),
                         new TableCell({
                             children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}.`, size: 24 })], spacing: { line: 360 } })], 
@@ -395,7 +396,7 @@ export function buildMatchingTable(q: any) {
 export function buildOptions(q: any, type: string) {
   if (q.options) {
     return q.options.map((opt: string, i: number) => {
-      const cleanOpt = opt.replace(/^[A-Ea-e][\.\)]\s*/, '');
+      const cleanOpt = stripLatex(opt.replace(/^[A-Ea-e][\.\)]\s*/, ''));
       
       if (type === 'true_false') return new Paragraph({ // Horizontal true/false
           children: [
@@ -503,7 +504,7 @@ export function buildAnswerSection(groupedQuestions: any) {
           new Paragraph({
             children: [
               new TextRun({
-                text: `Jawaban: ${getFullAnswer(q.correct_answer, q.options)}`,
+                text: `Jawaban: ${stripLatex(getFullAnswer(q.correct_answer, q.options))}`,
                 bold: true,
                 size: 24, // 12pt
               }),
@@ -517,7 +518,7 @@ export function buildAnswerSection(groupedQuestions: any) {
           new Paragraph({
             children: [
               new TextRun({
-                text: `Pembahasan: ${q.explanation}`,
+                text: `Pembahasan: ${stripLatex(q.explanation)}`,
                 italics: true,
                 size: 24, // 12pt
               }),

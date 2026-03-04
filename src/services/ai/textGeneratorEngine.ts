@@ -1,5 +1,6 @@
 import { getGeminiClient } from './aiClient';
 import { GenerateParams } from '../questionService';
+import { MODE_CONFIGS } from './promptTemplates';
 
 const GENERATOR_MODEL = "gemini-2.5-flash";
 const EVALUATOR_MODEL = "gemini-2.5-flash"; // Use consistent model
@@ -168,11 +169,64 @@ function validateQuestions(questions: any[], requestedTypes: string | string[], 
     return true;
 }
 
+function validateByMode(mode: keyof typeof MODE_CONFIGS, questions: any[]) {
+    const config = MODE_CONFIGS[mode].validator;
+    
+    questions.forEach((q, idx) => {
+        const qNum = idx + 1;
+        
+        // 1. Check minimum cognitive level
+        if (q._cognitive_level < config.minCognitive) {
+            throw new Error(`Question ${qNum} cognitive level (C${q._cognitive_level}) is below the minimum required (C${config.minCognitive}) for ${mode.toUpperCase()} mode.`);
+        }
+        
+        // 2. Enforce stimulus if required
+        const hasStimulus = q.stimulus && (q.stimulus.content || (q.stimulus.items && q.stimulus.items.length) || (q.stimulus.rows && q.stimulus.rows.length));
+        if (config.enforceStimulus && !hasStimulus) {
+            throw new Error(`Question ${qNum} is missing a required stimulus for ${mode.toUpperCase()} mode.`);
+        }
+        
+        // 3. Narrative word count check (heuristic)
+        if (q.stimulus && q.stimulus.type === 'text' && q.stimulus.content) {
+            const wordCount = q.stimulus.content.split(/\s+/).length;
+            if (wordCount > config.maxNarrativeWords) {
+                console.warn(`Question ${qNum} stimulus word count (${wordCount}) exceeds recommended max (${config.maxNarrativeWords}) for ${mode.toUpperCase()} mode.`);
+                if (mode === 'tka' || mode === 'standard') {
+                    if (wordCount > config.maxNarrativeWords + 20) { // Add a small buffer
+                        throw new Error(`Question ${qNum} stimulus is too long (${wordCount} words) for ${mode.toUpperCase()} mode. Max is ${config.maxNarrativeWords}.`);
+                    }
+                }
+            }
+        }
+        
+        // Mode specific custom rules
+        if (mode === 'akm') {
+            if (q.stimulus && q.stimulus.type === 'text' && q.stimulus.content) {
+                const wordCount = q.stimulus.content.split(/\s+/).length;
+                if (wordCount < 50 && (!q.stimulus.rows || q.stimulus.rows.length < 3)) {
+                    throw new Error(`Question ${qNum} stimulus is too short for AKM mode. Must be a rich text or a table with >= 3 rows.`);
+                }
+            }
+            if (q.question.toLowerCase().includes("adalah pengertian dari") || q.question.toLowerCase().includes("yang dimaksud dengan")) {
+                throw new Error(`Question ${qNum} contains direct definition phrasing, which is forbidden in AKM mode.`);
+            }
+        }
+        
+        if (mode === 'olympiad') {
+            if (q.question.toLowerCase().includes("hitung hasil dari") || q.question.toLowerCase().includes("berapakah hasil")) {
+                throw new Error(`Question ${qNum} contains simple computational phrasing ("hitung hasil dari"), forbidden in Olympiad mode.`);
+            }
+        }
+    });
+}
+
 export const generateTextQuestions = async (params: GenerateParams, apiKey?: string, retries = 0, onProgress?: (percent: number) => void): Promise<{ result: any; retries: number }> => {
   try {
     const ai = getGeminiClient(apiKey);
     
     if (onProgress) onProgress(10);
+
+    const modeConfig = MODE_CONFIGS[params.mode || 'standard'];
 
     // Map cognitive level to string description
     const cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
@@ -201,7 +255,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
     }
 
     const prompt = `
-      Role: Expert Teacher & Curriculum Designer.
+      ${modeConfig.generation.role}
       Task: Create ${params.count} HOTS (Higher Order Thinking Skills) questions.
       
       Context:
@@ -231,13 +285,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
 
       ---
       QUALITY STANDARDS (MUST FOLLOW):
-      1. Contextual Stimulus: Questions must be based on real-world context, cases, data, or situations (not direct definitions).
-      2. Valid Measurement: Questions must directly measure the provided Learning Objectives.
-      3. Logical Distractors: Distractors must be plausible, based on common student misconceptions, and not trivial or absurd. Avoid "All of the above" or "None of the above".
-      4. No Ambiguity: Questions must have one clear correct answer (unless question type allows multiple).
-      5. No Clueing: The question stem should not give away the answer.
-      6. Clear Language: Use clear, economical, and grade-appropriate language.
-      7. Understanding over Rote: Test for deep understanding, not just memorization (except for C1).
+      ${modeConfig.generation.qualityStandards}
 
       MATH FORMULAS:
       - Use LaTeX ONLY for complex mathematical expressions (fractions, roots, integrals, powers, limits, matrices, etc.).
@@ -248,14 +296,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - DO NOT auto-format simple variables like "x" or "y" unless part of a larger equation.
 
       STIMULUS STRUCTURE (1️⃣ UBAH STIMULUS JADI TERSTRUKTUR):
-      - REQUIRED for C3, C4, C5, C6.
-      - OPTIONAL/NONE for C1, C2.
-      - Must include a context/case/data/text/situation (2-4 sentences minimum, except for lower grades).
-      - Must be relevant to students' lives.
-      - Must contain information that students need to analyze to answer the question.
-      - For Higher Levels (C4+): Stimulus must include data, a problem to solve, or trigger reasoning.
-      - LONG READING PASSAGES: For subjects like Bahasa Indonesia, English, IPS, PPKN, etc., provide longer reading passages (texts, poems, news, etc.) as stimulus.
-      - MANDATORY PREFIX: If a reading passage is used, precede it with a clear instruction line, e.g., "Bacalah Pernyataan Berikut:", "Bacalah Pantun Berikut:", "Bacalah Berita Berikut:", etc.
+      ${modeConfig.generation.stimulusRule}
       - FORMATS:
         1. "text": Standard paragraphs.
         2. "list": Intro sentence + list of items.
@@ -360,7 +401,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
                 contents: prompt,
                 config: {
                     responseMimeType: "application/json",
-                    temperature: 0.7
+                    temperature: modeConfig.generation.temperature
                 }
             });
             if (draftResponse && draftResponse.text) {
@@ -457,11 +498,11 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
         console.log(`Refining batch ${i / BATCH_SIZE + 1} (${batch.length} questions)...`);
         
         const refineEvalPrompt = `
-Role: Strict Educational Evaluator & HOTS Expert.
+${modeConfig.refinement.persona}
 
 TASK:
 1. Evaluate the ${batch.length} draft questions below.
-2. Refine them to meet high quality standards (Score >= 24/30).
+2. Refine them to meet high quality standards.
 3. Return ONLY the refined questions.
 
 CONSTRAINTS:
@@ -476,6 +517,7 @@ RUBRIC:
 5. Language (Clear, Grade ${params.class_grade})
 6. Validity (1 correct answer, or multiple for Complex MC)
 7. Stimulus-Question Separation: Check that the question does NOT repeat or duplicate stimulus text. Penalize repetition.
+8. ${modeConfig.refinement.rubric}
 
 DRAFT QUESTIONS (JSON):
 ${JSON.stringify(batch)}
@@ -559,6 +601,7 @@ OUTPUT JSON SCHEMA:
     console.log("Step 3: Final Validation...");
     try {
         validateQuestions(currentDraft.questions, params.question_type, params.count);
+        validateByMode(params.mode || 'standard', currentDraft.questions);
         console.log("Validation passed.");
     } catch (e: any) {
         console.error("Validation failed:", e.message);

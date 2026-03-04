@@ -78,8 +78,11 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
   };
 
   const watchedValues = watch();
+  const watchedMode = watch('mode');
   const watchedJenjang = watch('jenjang');
   const watchedFase = watch('fase');
+  const watchedQuestionTypes = watch('question_type');
+  const watchedCognitiveLevels = watch('cognitive_level');
 
   // Data Mata Pelajaran
   const SUBJECTS_BY_JENJANG: Record<string, string[]> = {
@@ -163,6 +166,64 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
 
   // Automation Logic
   useEffect(() => {
+    // Mode constraints
+    if (watchedMode === 'akm') {
+      if (watchedValues.count > 10) {
+        setValue('count', 10);
+        Swal.fire({
+          icon: 'info',
+          title: 'Mode AKM',
+          text: 'Untuk Mode AKM, jumlah soal maksimal dibatasi 10 soal untuk menjaga kualitas stimulus.',
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 3000
+        });
+      }
+      
+      const invalidTypes = watchedQuestionTypes.filter(t => t === 'true_false' || t === 'short_answer');
+      if (invalidTypes.length > 0) {
+        setValue('question_type', watchedQuestionTypes.filter(t => t !== 'true_false' && t !== 'short_answer'));
+        Swal.fire({
+          icon: 'warning',
+          title: 'Tipe Soal Tidak Valid',
+          text: 'Mode AKM tidak mendukung tipe soal Benar Salah atau Isian Singkat.',
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 3000
+        });
+      }
+    } else if (watchedMode === 'olympiad') {
+      const invalidLevels = watchedCognitiveLevels.filter(l => l < 4);
+      if (invalidLevels.length > 0) {
+        setValue('cognitive_level', watchedCognitiveLevels.filter(l => l >= 4));
+        Swal.fire({
+          icon: 'warning',
+          title: 'Level Kognitif Tidak Valid',
+          text: 'Mode Olimpiade hanya mendukung level kognitif C4, C5, dan C6.',
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 3000
+        });
+      }
+    } else if (watchedMode === 'tka') {
+      const invalidLevels = watchedCognitiveLevels.filter(l => l < 3);
+      if (invalidLevels.length > 0) {
+        setValue('cognitive_level', watchedCognitiveLevels.filter(l => l >= 3));
+        Swal.fire({
+          icon: 'warning',
+          title: 'Level Kognitif Tidak Valid',
+          text: 'Mode TKA hanya mendukung level kognitif C3 hingga C6.',
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 3000
+        });
+      }
+    }
+
     if (watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') {
       // If Fase is not E or F, default to E
       if (watchedFase !== 'Fase E' && watchedFase !== 'Fase F') {
@@ -177,7 +238,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
             setValue('fase', 'Fase A');
         }
     }
-  }, [watchedJenjang, setValue, watchedFase]);
+  }, [watchedJenjang, setValue, watchedFase, watchedMode, watchedValues.count, watchedQuestionTypes, watchedCognitiveLevels]);
 
   useEffect(() => {
     // Reset class when fase changes if current class is not valid for new fase
@@ -307,6 +368,102 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
     { val: 6, label: 'C6', desc: 'Mencipta' },
   ];
 
+  const handleModeChange = (modeId: string) => {
+    if (modeId === watchedMode) return;
+
+    const modeInfo: Record<string, { title: string, html: string }> = {
+      standard: {
+        title: 'Mode Standar Sekolah',
+        html: `
+          <div class="text-left text-sm space-y-3">
+            <p><strong>Penjelasan:</strong> Mode ini dirancang untuk ujian sekolah formal (UH, PTS, PAS).</p>
+            <p><strong>Kriteria:</strong>
+              <ul class="list-disc pl-4 mt-1">
+                <li>Fokus pada indikator dasar kurikulum.</li>
+                <li>Level kognitif bervariasi (C1-C6).</li>
+                <li>Tidak ada pertanyaan jebakan (trick questions).</li>
+              </ul>
+            </p>
+            <p class="text-amber-600 bg-amber-50 p-2 rounded border border-amber-200"><strong>Penting:</strong> Cocok untuk mengukur ketuntasan belajar siswa secara adil dan terukur.</p>
+          </div>
+        `
+      },
+      akm: {
+        title: 'Mode AKM / Literasi',
+        html: `
+          <div class="text-left text-sm space-y-3">
+            <p><strong>Penjelasan:</strong> Mode Asesmen Kompetensi Minimum (AKM) fokus pada literasi dan numerasi.</p>
+            <p><strong>Kriteria:</strong>
+              <ul class="list-disc pl-4 mt-1">
+                <li><strong>WAJIB</strong> menggunakan stimulus (teks panjang/data).</li>
+                <li>Menuntut penalaran tinggi (reasoning), bukan hafalan.</li>
+                <li>Soal tidak bisa dijawab tanpa membaca stimulus.</li>
+              </ul>
+            </p>
+            <p class="text-amber-600 bg-amber-50 p-2 rounded border border-amber-200"><strong>Penting:</strong> Jumlah soal dibatasi maksimal 10. Tipe soal hafalan dilarang.</p>
+          </div>
+        `
+      },
+      olympiad: {
+        title: 'Mode Olimpiade',
+        html: `
+          <div class="text-left text-sm space-y-3">
+            <p><strong>Penjelasan:</strong> Mode kompetisi sains/matematika tingkat lanjut untuk seleksi siswa unggulan.</p>
+            <p><strong>Kriteria:</strong>
+              <ul class="list-disc pl-4 mt-1">
+                <li>Soal Multi-konsep (menggabungkan beberapa topik).</li>
+                <li>Membutuhkan manipulasi variabel dan abstraksi.</li>
+                <li>Level kognitif tinggi (C4-C6).</li>
+              </ul>
+            </p>
+            <p class="text-amber-600 bg-amber-50 p-2 rounded border border-amber-200"><strong>Penting:</strong> Sangat sulit. Tidak bisa diselesaikan dengan rumus cepat.</p>
+          </div>
+        `
+      },
+      tka: {
+        title: 'Mode TKA (Akademik)',
+        html: `
+          <div class="text-left text-sm space-y-3">
+            <p><strong>Penjelasan:</strong> Tes Kemampuan Akademik untuk seleksi masuk perguruan tinggi (UTBK/SNBT).</p>
+            <p><strong>Kriteria:</strong>
+              <ul class="list-disc pl-4 mt-1">
+                <li>Sangat teknis dan formal.</li>
+                <li>Kedalaman konsep akademik (bukan sekadar hafalan).</li>
+                <li>Minim narasi/cerita yang tidak perlu.</li>
+              </ul>
+            </p>
+            <p class="text-amber-600 bg-amber-50 p-2 rounded border border-amber-200"><strong>Penting:</strong> Presisi akademis tinggi. Level kognitif minimal C3.</p>
+          </div>
+        `
+      }
+    };
+
+    const info = modeInfo[modeId];
+
+    Swal.fire({
+      title: `Pilih ${info.title}?`,
+      html: info.html,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#2563eb',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Ya, Lanjutkan',
+      cancelButtonText: 'Batal',
+      reverseButtons: true
+    }).then((result) => {
+      if (result.isConfirmed) {
+        setValue('mode', modeId);
+        Swal.fire({
+          title: 'Mode Terpilih!',
+          text: `Anda telah mengaktifkan ${info.title}.`,
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false
+        });
+      }
+    });
+  };
+
   const questionTypes = [
     { id: 'multiple_choice', label: 'Pilihan Ganda' },
     { id: 'complex_multiple_choice', label: 'Pilihan Ganda Kompleks' },
@@ -329,6 +486,29 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
       <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
         <form id="generator-form" onSubmit={handleSubmit(handleFormSubmit, onError)} className="space-y-8">
           
+          {/* SECTION 0: MODE ASESMEN */}
+          <div className="space-y-5">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-2">
+              <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold">0</span>
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Mode Asesmen</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { id: 'standard', label: 'Standar Sekolah' },
+                { id: 'akm', label: 'AKM / Literasi' },
+                { id: 'olympiad', label: 'Olimpiade' },
+                { id: 'tka', label: 'TKA (Akademik)' }
+              ].map((m) => (
+                <div key={m.id} onClick={() => handleModeChange(m.id)} className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${watchedMode === m.id ? 'border-royal-blue-500 bg-royal-blue-50/50 ring-1 ring-royal-blue-500' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${watchedMode === m.id ? 'border-royal-blue-600' : 'border-slate-400'}`}>
+                    {watchedMode === m.id && <div className="w-2 h-2 rounded-full bg-royal-blue-600" />}
+                  </div>
+                  <div className="text-sm font-semibold text-slate-800">{m.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* SECTION 1: IDENTITAS */}
           <div className="space-y-5">
             <div className="flex items-center gap-3 border-b border-slate-100 pb-2">

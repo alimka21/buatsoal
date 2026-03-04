@@ -1,5 +1,5 @@
 import { GenerateParams } from '../questionService';
-import { generateTextQuestions } from './textModelService';
+import { generateTextQuestions } from './textGeneratorEngine';
 
 export const generateQuestionsOrchestrator = async (params: GenerateParams, apiKey?: string, onProgress?: (percent: number) => void) => {
   // STEP 1: Call Text Model -> generate structured questions

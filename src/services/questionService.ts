@@ -3,6 +3,8 @@ import { generateHash } from './hashService';
 import { generateQuestionsOrchestrator } from './ai/aiOrchestrator';
 import { GENERATION_MODEL } from './aiService'; // Still need this for logging model used, or update it
 
+import { AssessmentMode } from './ai/promptTemplates';
+
 export interface GenerateParams {
   // Identitas Pembelajaran
   jenjang: string;
@@ -11,6 +13,7 @@ export interface GenerateParams {
   subject: string; // Mata Pelajaran
   
   // Konfigurasi Soal
+  mode?: AssessmentMode; // Mode Asesmen
   learning_objectives: string[]; // Tujuan Pembelajaran (Array)
   topic: string[]; // Topik (Array)
   
