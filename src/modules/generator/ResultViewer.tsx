@@ -230,7 +230,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
     complex_multiple_choice: 'Pilihan Ganda Kompleks',
     true_false: 'Benar Salah',
     essay: 'Uraian',
-    short_answer: 'Isian Singkat',
+    short_answer: 'Uraian Singkat',
     matching: 'Menjodohkan'
   };
 

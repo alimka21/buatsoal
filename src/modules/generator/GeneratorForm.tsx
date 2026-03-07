@@ -6,6 +6,7 @@ import { GenerateParams } from '@/services/questionService';
 import React, { useState, useCallback, useEffect } from 'react';
 import debounce from 'lodash.debounce';
 import Swal from 'sweetalert2';
+import { tkaData } from '@/data/tkaTopics';
 
 const formSchema = z.object({
   // Identitas
@@ -15,6 +16,7 @@ const formSchema = z.object({
   subject: z.string().min(1, "Pilih mata pelajaran"),
   
   // Konfigurasi
+  mode: z.enum(['standard', 'akm', 'olympiad', 'tka']).optional(),
   topics: z.array(z.object({
     topic: z.string().min(3, "Topik wajib diisi"),
     learning_objectives: z.string().min(5, "Isi tujuan pembelajaran"),
@@ -81,6 +83,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
   const watchedMode = watch('mode');
   const watchedJenjang = watch('jenjang');
   const watchedFase = watch('fase');
+  const watchedSubject = watch('subject');
   const watchedQuestionTypes = watch('question_type');
   const watchedCognitiveLevels = watch('cognitive_level');
 
@@ -164,6 +167,89 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
     'Fase F': ['Kelas 11', 'Kelas 12'],
   };
 
+  const getSubjects = (mode: string, jenjang: string) => {
+    if (mode === 'olympiad') {
+      if (jenjang === 'SD/MI') return ['Matematika', 'Ilmu Pengetahuan Alam (IPA)'];
+      if (jenjang === 'SMP/MTs') return ['Matematika', 'Ilmu Pengetahuan Alam (IPA)', 'Ilmu Pengetahuan Sosial (IPS)'];
+      return ['Matematika', 'Fisika', 'Kimia', 'Biologi', 'Informatika', 'Astronomi', 'Ekonomi', 'Kebumian', 'Geografi'];
+    }
+    if (mode === 'akm') {
+      return ['Literasi Membaca', 'Numerasi'];
+    }
+    if (mode === 'tka') {
+      if (jenjang === 'SD/MI' || jenjang === 'SMP/MTs') {
+        return ['Matematika', 'Bahasa Indonesia'];
+      }
+      return ['Matematika', 'Fisika', 'Kimia', 'Biologi', 'Sejarah', 'Geografi', 'Sosiologi', 'Ekonomi'];
+    }
+    // Standard
+    return SUBJECTS_BY_JENJANG[jenjang] || [];
+  };
+
+  const getCognitiveLevels = (mode: string, jenjang: string, subject: string) => {
+    if (mode === 'olympiad') {
+      return [
+        { val: 4, label: 'C4', desc: 'Analisis (Complex Analysis)' },
+        { val: 5, label: 'C5', desc: 'Evaluasi (Justification)' },
+        { val: 6, label: 'C6', desc: 'Kreasi (Non-Routine Problem Solving)' },
+      ];
+    }
+    if (mode === 'akm') {
+      if (subject === 'Literasi Membaca') {
+        return [
+          { val: 1, label: 'L1', desc: 'Access & Retrieve' },
+          { val: 2, label: 'L2', desc: 'Integrate & Interpret' },
+          { val: 3, label: 'L3', desc: 'Evaluate & Reflect' },
+        ];
+      } else {
+        return [
+          { val: 1, label: 'L1', desc: 'Knowing' },
+          { val: 2, label: 'L2', desc: 'Applying' },
+          { val: 3, label: 'L3', desc: 'Reasoning' },
+        ];
+      }
+    }
+    if (mode === 'tka') {
+      return [
+        { val: 3, label: 'C3', desc: 'Aplikasi' },
+        { val: 4, label: 'C4', desc: 'Analisis' },
+        { val: 5, label: 'C5', desc: 'Evaluasi' },
+        { val: 6, label: 'C6', desc: 'Kreasi' },
+      ];
+    }
+    // Standard
+    return [
+      { val: 1, label: 'C1', desc: 'Mengingat' },
+      { val: 2, label: 'C2', desc: 'Memahami' },
+      { val: 3, label: 'C3', desc: 'Mengaplikasikan' },
+      { val: 4, label: 'C4', desc: 'Menganalisis' },
+      { val: 5, label: 'C5', desc: 'Mengevaluasi' },
+      { val: 6, label: 'C6', desc: 'Mencipta' },
+    ];
+  };
+
+  const getQuestionTypes = (mode: string) => {
+    const allTypes = [
+      { id: 'multiple_choice', label: 'Pilihan Ganda' },
+      { id: 'complex_multiple_choice', label: 'Pilihan Ganda Kompleks' },
+      { id: 'true_false', label: 'Benar Salah' },
+      { id: 'essay', label: 'Uraian' },
+      { id: 'short_answer', label: 'Uraian Singkat' },
+      { id: 'matching', label: 'Menjodohkan' }
+    ];
+
+    if (mode === 'akm') {
+      return allTypes.filter(t => !['true_false', 'short_answer'].includes(t.id));
+    }
+    if (mode === 'olympiad') {
+      return allTypes.filter(t => ['multiple_choice', 'complex_multiple_choice', 'short_answer', 'essay'].includes(t.id));
+    }
+    if (mode === 'tka') {
+      return allTypes.filter(t => ['multiple_choice', 'complex_multiple_choice', 'matching', 'short_answer'].includes(t.id));
+    }
+    return allTypes;
+  };
+
   // Automation Logic
   useEffect(() => {
     // Mode constraints
@@ -187,7 +273,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
         Swal.fire({
           icon: 'warning',
           title: 'Tipe Soal Tidak Valid',
-          text: 'Mode AKM tidak mendukung tipe soal Benar Salah atau Isian Singkat.',
+          text: 'Mode AKM tidak mendukung tipe soal Benar Salah atau Uraian Singkat.',
           toast: true,
           position: 'top-end',
           showConfirmButton: false,
@@ -224,21 +310,45 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
       }
     }
 
-    if (watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') {
-      // If Fase is not E or F, default to E
-      if (watchedFase !== 'Fase E' && watchedFase !== 'Fase F') {
-         setValue('fase', 'Fase E');
+    if (watchedMode === 'tka') {
+      if (watchedJenjang === 'SD/MI') {
+        if (watchedFase !== 'Fase C') setValue('fase', 'Fase C');
+        if (watch('class_grade') !== 'Kelas 6') setValue('class_grade', 'Kelas 6');
+      } else if (watchedJenjang === 'SMP/MTs') {
+        if (watchedFase !== 'Fase D') setValue('fase', 'Fase D');
+        if (watch('class_grade') !== 'Kelas 9') setValue('class_grade', 'Kelas 9');
+      } else if (watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') {
+        if (watchedFase !== 'Fase F') setValue('fase', 'Fase F');
+        if (watch('class_grade') !== 'Kelas 12') setValue('class_grade', 'Kelas 12');
       }
-    } else if (watchedJenjang === 'SMP/MTs') {
-        if (watchedFase !== 'Fase D') {
-            setValue('fase', 'Fase D');
+    } else if (watchedMode === 'akm') {
+      if (watchedJenjang === 'SD/MI') {
+        if (watchedFase !== 'Fase C') setValue('fase', 'Fase C');
+        if (watch('class_grade') !== 'Kelas 5') setValue('class_grade', 'Kelas 5');
+      } else if (watchedJenjang === 'SMP/MTs') {
+        if (watchedFase !== 'Fase D') setValue('fase', 'Fase D');
+        if (watch('class_grade') !== 'Kelas 8') setValue('class_grade', 'Kelas 8');
+      } else if (watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') {
+        if (watchedFase !== 'Fase F') setValue('fase', 'Fase F');
+        if (watch('class_grade') !== 'Kelas 11') setValue('class_grade', 'Kelas 11');
+      }
+    } else {
+      if (watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') {
+        // If Fase is not E or F, default to E
+        if (watchedFase !== 'Fase E' && watchedFase !== 'Fase F') {
+           setValue('fase', 'Fase E');
         }
-    } else if (watchedJenjang === 'SD/MI') {
-        if (!['Fase A', 'Fase B', 'Fase C'].includes(watchedFase)) {
-            setValue('fase', 'Fase A');
-        }
+      } else if (watchedJenjang === 'SMP/MTs') {
+          if (watchedFase !== 'Fase D') {
+              setValue('fase', 'Fase D');
+          }
+      } else if (watchedJenjang === 'SD/MI') {
+          if (!['Fase A', 'Fase B', 'Fase C'].includes(watchedFase)) {
+              setValue('fase', 'Fase A');
+          }
+      }
     }
-  }, [watchedJenjang, setValue, watchedFase, watchedMode, watchedValues.count, watchedQuestionTypes, watchedCognitiveLevels]);
+  }, [watchedJenjang, setValue, watchedFase, watchedMode, watchedValues.count, watchedQuestionTypes, watchedCognitiveLevels, watch]);
 
   useEffect(() => {
     // Reset class when fase changes if current class is not valid for new fase
@@ -359,15 +469,6 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
       onSubmit(payload);
   };
 
-  const cognitiveLevels = [
-    { val: 1, label: 'C1', desc: 'Mengingat' },
-    { val: 2, label: 'C2', desc: 'Memahami' },
-    { val: 3, label: 'C3', desc: 'Mengaplikasikan' },
-    { val: 4, label: 'C4', desc: 'Menganalisis' },
-    { val: 5, label: 'C5', desc: 'Mengevaluasi' },
-    { val: 6, label: 'C6', desc: 'Mencipta' },
-  ];
-
   const handleModeChange = (modeId: string) => {
     if (modeId === watchedMode) return;
 
@@ -389,7 +490,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
         `
       },
       akm: {
-        title: 'Mode AKM / Literasi',
+        title: 'Mode AKM (Literasi & Numerasi)',
         html: `
           <div class="text-left text-sm space-y-3">
             <p><strong>Penjelasan:</strong> Mode Asesmen Kompetensi Minimum (AKM) fokus pada literasi dan numerasi.</p>
@@ -424,7 +525,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
         title: 'Mode TKA (Akademik)',
         html: `
           <div class="text-left text-sm space-y-3">
-            <p><strong>Penjelasan:</strong> Tes Kemampuan Akademik untuk seleksi masuk perguruan tinggi (UTBK/SNBT).</p>
+            <p><strong>Penjelasan:</strong> Asesmen terstandar yang diselenggarakan Kemendikdasmen (mulai 2025/2026) untuk mengukur capaian akademik individu siswa (SD-SMA) secara objektif dan adil.</p>
             <p><strong>Kriteria:</strong>
               <ul class="list-disc pl-4 mt-1">
                 <li>Sangat teknis dan formal.</li>
@@ -452,7 +553,17 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
       reverseButtons: true
     }).then((result) => {
       if (result.isConfirmed) {
-        setValue('mode', modeId);
+        setValue('mode', modeId as any);
+        
+        // Auto-select cognitive levels based on mode
+        if (modeId === 'olympiad') {
+            setValue('cognitive_level', [4, 5, 6]);
+        } else if (modeId === 'akm') {
+            setValue('cognitive_level', [1, 2, 3]);
+        } else if (modeId === 'tka') {
+            setValue('cognitive_level', [3, 4, 5, 6]);
+        }
+        
         Swal.fire({
           title: 'Mode Terpilih!',
           text: `Anda telah mengaktifkan ${info.title}.`,
@@ -463,15 +574,6 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
       }
     });
   };
-
-  const questionTypes = [
-    { id: 'multiple_choice', label: 'Pilihan Ganda' },
-    { id: 'complex_multiple_choice', label: 'Pilihan Ganda Kompleks' },
-    { id: 'true_false', label: 'Benar Salah' },
-    { id: 'essay', label: 'Uraian' },
-    { id: 'short_answer', label: 'Isian Singkat' },
-    { id: 'matching', label: 'Menjodohkan' }
-  ];
 
   return (
     <div className="h-full flex flex-col bg-white z-20">
@@ -495,7 +597,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 { id: 'standard', label: 'Standar Sekolah' },
-                { id: 'akm', label: 'AKM / Literasi' },
+                { id: 'akm', label: 'AKM (Literasi & Numerasi)' },
                 { id: 'olympiad', label: 'Olimpiade' },
                 { id: 'tka', label: 'TKA (Akademik)' }
               ].map((m) => (
@@ -531,62 +633,71 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
                 </div>
                 {errors.jenjang && <p className="text-red-500 text-[10px]">{errors.jenjang.message}</p>}
               </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700">Fase</label>
-                <div className="relative">
-                  <select {...register('fase')} className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all">
-                    <option value="">Pilih Fase</option>
-                    {/* Render options based on Jenjang */}
-                    {(watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') ? (
-                        <>
-                            <option value="Fase E">Fase E</option>
-                            <option value="Fase F">Fase F</option>
-                        </>
-                    ) : watchedJenjang === 'SMP/MTs' ? (
-                        <>
-                            <option value="Fase D">Fase D</option>
-                        </>
-                    ) : watchedJenjang === 'SD/MI' ? (
-                        <>
-                            <option value="Fase A">Fase A</option>
-                            <option value="Fase B">Fase B</option>
-                            <option value="Fase C">Fase C</option>
-                        </>
-                    ) : (
-                        // Default fallback
-                        <>
-                            <option value="Fase A">Fase A</option>
-                            <option value="Fase B">Fase B</option>
-                            <option value="Fase C">Fase C</option>
-                            <option value="Fase D">Fase D</option>
-                            <option value="Fase E">Fase E</option>
-                            <option value="Fase F">Fase F</option>
-                        </>
-                    )}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
+
+              {watchedMode !== 'olympiad' && watchedMode !== 'akm' && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">Fase</label>
+                  <div className="relative">
+                    <select 
+                      {...register('fase')} 
+                      className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all disabled:opacity-50 disabled:bg-slate-100"
+                      disabled={watchedMode === 'tka'}
+                    >
+                      <option value="">Pilih Fase</option>
+                      {/* Render options based on Jenjang */}
+                      {(watchedJenjang === 'SMA/MA' || watchedJenjang === 'SMK/MAK') ? (
+                          <>
+                              <option value="Fase E">Fase E</option>
+                              <option value="Fase F">Fase F</option>
+                          </>
+                      ) : watchedJenjang === 'SMP/MTs' ? (
+                          <>
+                              <option value="Fase D">Fase D</option>
+                          </>
+                      ) : watchedJenjang === 'SD/MI' ? (
+                          <>
+                              <option value="Fase A">Fase A</option>
+                              <option value="Fase B">Fase B</option>
+                              <option value="Fase C">Fase C</option>
+                          </>
+                      ) : (
+                          // Default fallback
+                          <>
+                              <option value="Fase A">Fase A</option>
+                              <option value="Fase B">Fase B</option>
+                              <option value="Fase C">Fase C</option>
+                              <option value="Fase D">Fase D</option>
+                              <option value="Fase E">Fase E</option>
+                              <option value="Fase F">Fase F</option>
+                          </>
+                      )}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
+                  </div>
+                  {errors.fase && <p className="text-red-500 text-[10px]">{errors.fase.message}</p>}
                 </div>
-                {errors.fase && <p className="text-red-500 text-[10px]">{errors.fase.message}</p>}
-              </div>
+              )}
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">Kelas</label>
-              <div className="relative">
-                  <select 
-                    {...register('class_grade')}
-                    className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all"
-                    disabled={!watchedFase}
-                  >
-                    <option value="">Pilih Kelas</option>
-                    {watchedFase && CLASSES_BY_FASE[watchedFase]?.map((cls) => (
-                        <option key={cls} value={cls}>{cls}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
+            {watchedMode !== 'olympiad' && watchedMode !== 'akm' && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700">Kelas</label>
+                <div className="relative">
+                    <select 
+                      {...register('class_grade')}
+                      className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all disabled:opacity-50 disabled:bg-slate-100"
+                      disabled={!watchedFase || watchedMode === 'tka'}
+                    >
+                      <option value="">Pilih Kelas</option>
+                      {watchedFase && CLASSES_BY_FASE[watchedFase]?.map((cls) => (
+                          <option key={cls} value={cls}>{cls}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" size={16} />
+                </div>
+                {errors.class_grade && <p className="text-red-500 text-[10px]">{errors.class_grade.message}</p>}
               </div>
-              {errors.class_grade && <p className="text-red-500 text-[10px]">{errors.class_grade.message}</p>}
-            </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">Mata Pelajaran</label>
@@ -596,7 +707,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
                   className="w-full pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl appearance-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 text-sm outline-none transition-all"
                 >
                   <option value="">Pilih Mata Pelajaran</option>
-                  {watchedJenjang && SUBJECTS_BY_JENJANG[watchedJenjang]?.map((subj) => (
+                  {watchedJenjang && getSubjects(watchedMode || 'standard', watchedJenjang).map((subj) => (
                     <option key={subj} value={subj}>{subj}</option>
                   ))}
                 </select>
@@ -708,7 +819,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">Level Kognitif (Bisa pilih lebih dari satu)</label>
               <div className="grid grid-cols-3 gap-2">
-                {cognitiveLevels.map((c) => (
+                {getCognitiveLevels(watchedMode || 'standard', watchedJenjang, watch('subject')).map((c) => (
                   <label key={c.val} className="cursor-pointer relative group">
                     <input
                       type="checkbox"
@@ -720,7 +831,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
                       {c.label}
                     </div>
                     {/* Tooltip for description */}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 w-max max-w-[150px] text-center">
                       {c.desc}
                     </div>
                   </label>
@@ -732,7 +843,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-slate-700">Tipe Soal (Bisa pilih lebih dari satu)</label>
               <div className="grid grid-cols-2 gap-2">
-                {questionTypes.map((type) => (
+                {getQuestionTypes(watchedMode || 'standard').map((type) => (
                   <label key={type.id} className="cursor-pointer">
                     <input 
                       type="checkbox" 
@@ -824,25 +935,56 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
                 <div className="space-y-4">
                     <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">Topik / Materi</label>
-                        <input 
-                            value={newTopic.topic}
-                            onChange={(e) => setNewTopic({...newTopic, topic: e.target.value})}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none text-sm"
-                            placeholder="Contoh: Ekosistem"
-                        />
+                        {watchedMode === 'tka' && tkaData[watchedJenjang]?.[watchedSubject] ? (
+                            <select 
+                                value={newTopic.topic}
+                                onChange={(e) => {
+                                    setNewTopic({
+                                        topic: e.target.value,
+                                        learning_objectives: ['']
+                                    });
+                                }}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none text-sm bg-white"
+                            >
+                                <option value="">-- Pilih Topik --</option>
+                                {tkaData[watchedJenjang][watchedSubject].map((t, idx) => (
+                                    <option key={idx} value={t.topic}>{t.topic}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <input 
+                                value={newTopic.topic}
+                                onChange={(e) => setNewTopic({...newTopic, topic: e.target.value})}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none text-sm"
+                                placeholder="Contoh: Ekosistem"
+                            />
+                        )}
                     </div>
                     <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">Tujuan Pembelajaran</label>
                         <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
                             {newTopic.learning_objectives.map((obj, index) => (
                                 <div key={index} className="flex gap-2 items-start">
-                                    <textarea 
-                                        value={obj}
-                                        onChange={(e) => handleObjectiveChange(index, e.target.value)}
-                                        className="flex-1 px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none text-sm resize-y min-h-[42px]"
-                                        placeholder={`Tujuan Pembelajaran ${index + 1}`}
-                                        rows={2}
-                                    />
+                                    {watchedMode === 'tka' && tkaData[watchedJenjang]?.[watchedSubject] && newTopic.topic ? (
+                                        <select
+                                            value={obj}
+                                            onChange={(e) => handleObjectiveChange(index, e.target.value)}
+                                            className="flex-1 px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none text-sm bg-white"
+                                        >
+                                            <option value="">-- Pilih Tujuan Pembelajaran --</option>
+                                            {tkaData[watchedJenjang][watchedSubject].find(t => t.topic === newTopic.topic)?.learning_objectives?.map((lo, loIdx) => (
+                                                <option key={loIdx} value={lo}>{lo}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <textarea 
+                                            value={obj}
+                                            onChange={(e) => handleObjectiveChange(index, e.target.value)}
+                                            className="flex-1 px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none text-sm resize-y min-h-[42px]"
+                                            placeholder={`Tujuan Pembelajaran ${index + 1}`}
+                                            rows={2}
+                                        />
+                                    )}
                                     {newTopic.learning_objectives.length > 1 && (
                                         <button 
                                             onClick={() => removeObjective(index)}

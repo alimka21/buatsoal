@@ -9,9 +9,36 @@ const TYPE_LABELS: Record<string, string> = {
   complex_multiple_choice: 'Pilihan Ganda Kompleks',
   true_false: 'Benar Salah',
   essay: 'Uraian',
-  short_answer: 'Isian Singkat',
+  short_answer: 'Uraian Singkat',
   matching: 'Menjodohkan'
 };
+
+export function parseTextToRuns(text: string, options: any = {}): TextRun[] {
+    const regex = /(\^\{[^}]+\}|\^[\w\d+-\.]|_\{[^}]+\}|_[\w\d+-\.])/g;
+    const parts = text.split(regex);
+    const runs: TextRun[] = [];
+    
+    parts.forEach(part => {
+        if (!part) return;
+        if (part.startsWith('^')) {
+            let content = part.substring(1);
+            if (content.startsWith('{') && content.endsWith('}')) {
+                content = content.substring(1, content.length - 1);
+            }
+            runs.push(new TextRun({ text: content, superScript: true, ...options }));
+        } else if (part.startsWith('_')) {
+            let content = part.substring(1);
+            if (content.startsWith('{') && content.endsWith('}')) {
+                content = content.substring(1, content.length - 1);
+            }
+            runs.push(new TextRun({ text: content, subScript: true, ...options }));
+        } else {
+            runs.push(new TextRun({ text: part, ...options }));
+        }
+    });
+    
+    return runs;
+}
 
 export function buildHeaderSection(result: any, formData: any) {
   return [
@@ -57,9 +84,8 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
         // Optimize Question Text Formatting
         const processedQuestion = stripLatex(formatQuestionText(q.question));
 
-        const questionRuns = processedQuestion.split('\n').map((line: string, index: number) => {
-            return new TextRun({
-                text: line.trim(),
+        const questionRuns = processedQuestion.split('\n').flatMap((line: string, index: number) => {
+            return parseTextToRuns(line.trim(), {
                 size: 24, // 12pt
                 break: index > 0 ? 1 : 0
             });
@@ -70,9 +96,8 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
         if (q.stimulus) {
           if (q.stimulus.type === 'text') {
             // Text Stimulus
-            const stimulusRuns = stripLatex(q.stimulus.content).split('\n').map((line: string, index: number) => {
-                return new TextRun({
-                    text: line.trim(),
+            const stimulusRuns = stripLatex(q.stimulus.content).split('\n').flatMap((line: string, index: number) => {
+                return parseTextToRuns(line.trim(), {
                     size: 24, // 12pt
                     break: index > 0 ? 1 : 0
                 });
@@ -91,9 +116,8 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
             );
           } else if (q.stimulus.type === 'list') {
             // List Stimulus
-            const stimulusRuns = stripLatex(q.stimulus.content).split('\n').map((line: string, index: number) => {
-                return new TextRun({
-                    text: line.trim(),
+            const stimulusRuns = stripLatex(q.stimulus.content).split('\n').flatMap((line: string, index: number) => {
+                return parseTextToRuns(line.trim(), {
                     size: 24, // 12pt
                     break: index > 0 ? 1 : 0
                 });
@@ -115,7 +139,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                 q.stimulus.items.forEach((item: string) => {
                     docElements.push(
                         new Paragraph({
-                            children: [new TextRun({ text: stripLatex(item), size: 24 })],
+                            children: parseTextToRuns(stripLatex(item), { size: 24 }),
                             bullet: {
                                 level: 0
                             },
@@ -146,7 +170,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                     new TableRow({
                         children: q.stimulus.headers.map((h: string) => 
                             new TableCell({
-                                children: [new Paragraph({ children: [new TextRun({ text: stripLatex(h), bold: true, size: 24 })], alignment: AlignmentType.CENTER })],
+                                children: [new Paragraph({ children: parseTextToRuns(stripLatex(h), { bold: true, size: 24 }), alignment: AlignmentType.CENTER })],
                                 shading: { fill: "F3F4F6" }, // Light gray
                                 margins: { top: 100, bottom: 100, left: 100, right: 100 },
                             })
@@ -161,7 +185,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                         new TableRow({
                             children: row.map((cell: string) => 
                                 new TableCell({
-                                    children: [new Paragraph({ children: [new TextRun({ text: stripLatex(cell), size: 24 })] })],
+                                    children: [new Paragraph({ children: parseTextToRuns(stripLatex(cell), { size: 24 }) })],
                                     margins: { top: 100, bottom: 100, left: 100, right: 100 },
                                 })
                             )
@@ -190,7 +214,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
              // Chart Stimulus
              docElements.push(
                 new Paragraph({
-                    children: [new TextRun({ text: stripLatex(`Perhatikan grafik berikut: ${q.stimulus.description || ''}`), size: 24 })],
+                    children: parseTextToRuns(stripLatex(`Perhatikan grafik berikut: ${q.stimulus.description || ''}`), { size: 24 }),
                     numbering: {
                         reference: "question-numbering",
                         level: 0,
@@ -321,10 +345,10 @@ export function buildMatchingTable(q: any) {
                   new TableRow({
                       children: [
                           new TableCell({
-                              children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${stripLatex(pair.left)}`, size: 24 })], spacing: { line: 360 } })], 
+                              children: [new Paragraph({ children: parseTextToRuns(`${i + 1}. ${stripLatex(pair.left)}`, { size: 24 }), spacing: { line: 360 } })], 
                           }),
                           new TableCell({
-                              children: [new Paragraph({ children: [new TextRun({ text: `${String.fromCharCode(65 + i)}. ${stripLatex(pair.right)}`, size: 24 })], spacing: { line: 360 } })], 
+                              children: [new Paragraph({ children: parseTextToRuns(`${String.fromCharCode(65 + i)}. ${stripLatex(pair.right)}`, { size: 24 }), spacing: { line: 360 } })], 
                           }),
                       ],
                   })
@@ -373,7 +397,7 @@ export function buildMatchingTable(q: any) {
                 new TableRow({
                     children: [
                         new TableCell({
-                            children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${stripLatex(opt.split(' - ')[0] || '')}`, size: 24 })], spacing: { line: 360 } })], 
+                            children: [new Paragraph({ children: parseTextToRuns(`${i + 1}. ${stripLatex(opt.split(' - ')[0] || '')}`, { size: 24 }), spacing: { line: 360 } })], 
                         }),
                         new TableCell({
                             children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}.`, size: 24 })], spacing: { line: 360 } })], 
@@ -414,12 +438,7 @@ export function buildOptions(q: any, type: string) {
 
       if (type === 'complex_multiple_choice') {
         return new Paragraph({
-          children: [
-              new TextRun({
-                  text: cleanOpt,
-                  size: 24, // 12pt
-              })
-          ],
+          children: parseTextToRuns(cleanOpt, { size: 24 }),
           numbering: {
             reference: "bullet-numbering",
             level: 0,
@@ -430,12 +449,7 @@ export function buildOptions(q: any, type: string) {
       
       // Standard Multiple Choice (A, B, C...)
       return new Paragraph({
-        children: [
-            new TextRun({
-                text: cleanOpt,
-                size: 24, // 12pt
-            })
-        ],
+        children: parseTextToRuns(cleanOpt, { size: 24 }),
         numbering: {
           reference: "question-numbering",
           level: 1, // Sub-level of question numbering
@@ -502,13 +516,7 @@ export function buildAnswerSection(groupedQuestions: any) {
       ...questions.flatMap((q: any) => {
         return [
           new Paragraph({
-            children: [
-              new TextRun({
-                text: `Jawaban: ${stripLatex(getFullAnswer(q.correct_answer, q.options))}`,
-                bold: true,
-                size: 24, // 12pt
-              }),
-            ],
+            children: parseTextToRuns(`Jawaban: ${stripLatex(getFullAnswer(q.correct_answer, q.options))}`, { bold: true, size: 24 }),
             numbering: {
               reference: "answer-numbering",
               level: 0,
@@ -516,13 +524,7 @@ export function buildAnswerSection(groupedQuestions: any) {
             spacing: { line: 360 },
           }),
           new Paragraph({
-            children: [
-              new TextRun({
-                text: `Pembahasan: ${stripLatex(q.explanation)}`,
-                italics: true,
-                size: 24, // 12pt
-              }),
-            ],
+            children: parseTextToRuns(`Pembahasan: ${stripLatex(q.explanation)}`, { italics: true, size: 24 }),
             indent: { left: 720 },
             spacing: { after: 200, line: 360 },
           }),

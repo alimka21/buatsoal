@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/services/supabaseClient';
 import { useAuthStore } from '@/store/authStore';

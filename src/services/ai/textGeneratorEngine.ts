@@ -1,6 +1,6 @@
 import { getGeminiClient } from './aiClient';
 import { GenerateParams } from '../questionService';
-import { MODE_CONFIGS } from './promptTemplates';
+import { getModeConfig, AssessmentMode } from './promptTemplates';
 
 const GENERATOR_MODEL = "gemini-2.5-flash";
 const EVALUATOR_MODEL = "gemini-2.5-flash"; // Use consistent model
@@ -16,8 +16,30 @@ function cleanAndParseJSON(jsonString: string): any {
   } catch (e) {
     console.warn("JSON parse failed, attempting to sanitize LaTeX backslashes...", e);
     
-    // 2. Try to fix common LaTeX escape issues
-    const sanitized = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+    // 2. Fix common LaTeX escape issues by ensuring even backslashes for non-JSON escapes
+    let sanitized = "";
+    for (let i = 0; i < cleaned.length; i++) {
+      if (cleaned[i] === '\\') {
+        let count = 0;
+        while (cleaned[i] === '\\') {
+          count++;
+          i++;
+        }
+        const nextChar = cleaned[i];
+        const isValidEscape = /["\\/bfnrtu]/.test(nextChar || '');
+        
+        if (count % 2 === 1 && !isValidEscape) {
+          count++;
+        }
+        
+        sanitized += '\\'.repeat(count);
+        if (i < cleaned.length) {
+          sanitized += cleaned[i];
+        }
+      } else {
+        sanitized += cleaned[i];
+      }
+    }
     
     try {
       return JSON.parse(sanitized);
@@ -82,7 +104,7 @@ function normalizeAndEnforceContract(q: any, index: number) {
   };
 }
 
-function validateQuestions(questions: any[], requestedTypes: string | string[], count: number) {
+function validateQuestions(questions: any[], requestedTypes: string | string[], count: number, optionCount?: number) {
     if (!Array.isArray(questions)) {
         throw new Error("Result 'questions' is not an array.");
     }
@@ -103,15 +125,24 @@ function validateQuestions(questions: any[], requestedTypes: string | string[], 
         }
 
         // Validate correct_answer based on type
-        if (q._type !== 'matching' && q._type !== 'essay' && !q.correct_answer) {
+        if (q._type !== 'matching' && q._type !== 'essay' && q._type !== 'short_answer' && !q.correct_answer) {
              throw new Error(`Question ${idx + 1} is missing 'correct_answer'.`);
         }
 
-        if (q._type === 'essay' && !q.correct_answer) {
+        if ((q._type === 'essay' || q._type === 'short_answer') && !q.correct_answer) {
              q.correct_answer = "Lihat pembahasan.";
         }
 
         // Validate specific types
+        if (q._type === "multiple_choice" || q._type === "complex_multiple_choice") {
+            if (!q.options || !Array.isArray(q.options)) {
+                throw new Error(`Question ${idx + 1} is missing 'options' array.`);
+            }
+            if (optionCount && q.options.length !== optionCount) {
+                throw new Error(`Question ${idx + 1} has ${q.options.length} options, but ${optionCount} were requested.`);
+            }
+        }
+
         if (q._type === "complex_multiple_choice") {
             if (!q.correct_answer || !q.correct_answer.includes(",")) {
                 // Try to fix if it's an array
@@ -140,7 +171,7 @@ function validateQuestions(questions: any[], requestedTypes: string | string[], 
                  throw new Error(`Question ${idx + 1} (True/False) must have options ["Benar", "Salah"].`);
              }
         }
-        if (q._type === "essay") {
+        if (q._type === "essay" || q._type === "short_answer") {
             if (q.options && q.options.length > 0) {
                 // Warning only, or strip it? Let's strip it to be safe
                 delete q.options;
@@ -169,8 +200,8 @@ function validateQuestions(questions: any[], requestedTypes: string | string[], 
     return true;
 }
 
-function validateByMode(mode: keyof typeof MODE_CONFIGS, questions: any[]) {
-    const config = MODE_CONFIGS[mode].validator;
+function validateByMode(mode: AssessmentMode, jenjang: string, questions: any[]) {
+    const config = getModeConfig(mode, jenjang).validator;
     
     questions.forEach((q, idx) => {
         const qNum = idx + 1;
@@ -226,7 +257,8 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
     
     if (onProgress) onProgress(10);
 
-    const modeConfig = MODE_CONFIGS[params.mode || 'standard'];
+    const currentMode = params.mode || 'standard';
+    const modeConfig = getModeConfig(currentMode, params.jenjang);
 
     // Map cognitive level to string description
     const cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
@@ -311,8 +343,8 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - The question must directly refer to the stimulus without rewriting it.
 
       QUESTION TYPE RULES:
-      1. Multiple Choice: Standard 1 correct answer.
-      2. Complex Multiple Choice: MUST have MORE THAN ONE correct answer (e.g., "A, C" or "B, D, E").
+      1. Multiple Choice: Standard 1 correct answer. MUST provide EXACTLY ${params.option_count || 4} options.
+      2. Complex Multiple Choice: MUST have MORE THAN ONE correct answer (e.g., "A, C" or "B, D, E"). MUST provide EXACTLY ${params.option_count || 4} options.
       3. Matching: MUST use the "pairs" field with "left" and "right" items. Do NOT use "options".
       4. True/False: Use "options": ["Benar", "Salah"].
       5. Essay/Short Answer: No options needed.
@@ -443,7 +475,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
         console.log("Skipping refinement for Lower Order Thinking Skills (C1-C2)...");
         // Still run validation
         try {
-            validateQuestions(currentDraft.questions, params.question_type, params.count);
+            validateQuestions(currentDraft.questions, params.question_type, params.count, params.option_count);
         } catch (e) {
             console.warn("Validation failed for C1-C2 draft, but proceeding as refinement is skipped.", e);
         }
@@ -600,8 +632,8 @@ OUTPUT JSON SCHEMA:
     // 5️⃣ STRUCTURAL GUARD LAYER
     console.log("Step 3: Final Validation...");
     try {
-        validateQuestions(currentDraft.questions, params.question_type, params.count);
-        validateByMode(params.mode || 'standard', currentDraft.questions);
+        validateQuestions(currentDraft.questions, params.question_type, params.count, params.option_count);
+        validateByMode(currentMode, params.jenjang, currentDraft.questions);
         console.log("Validation passed.");
     } catch (e: any) {
         console.error("Validation failed:", e.message);
