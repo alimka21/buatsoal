@@ -81,7 +81,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
         <div className="w-20 h-20 flex items-center justify-center mb-6">
           <div className="animate-spin rounded-full h-14 w-14 border-4 border-slate-200 border-t-royal-blue-600"></div>
         </div>
-        <p className="font-medium text-lg text-slate-600 animate-pulse">Sedang Membuat Soal HOTS...</p>
+        <p className="font-medium text-lg text-slate-600 animate-pulse">Sedang Membuat Soal...</p>
         <p className="text-sm text-slate-400 mt-2">Progress: {progress}%</p>
         
         {/* Progress Bar */}
@@ -211,8 +211,9 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
 
     try {
       const blob = await Packer.toBlob(doc);
-      const filenameTopic = Array.isArray(formData?.topic) ? formData.topic[0] : (formData?.topic || 'Kompilasi');
-      saveAs(blob, `Soal_HOTS_${filenameTopic}.docx`);
+      const modeName = Array.isArray(formData?.mode) ? formData.mode[0] : (formData?.mode || 'standard');
+      const filenameTopic = formData?.topics?.[0]?.topic || 'Kompilasi';
+      saveAs(blob, `Soal_${modeName}_${filenameTopic}.docx`);
     } catch (blobError) {
       console.error("Error creating blob:", blobError);
       throw blobError;

@@ -29,7 +29,7 @@ export const useGeneratorStore = create<GeneratorState>((set, get) => ({
 
   generate: async (userId: string, payload: GenerateParams) => {
     if (payload.count > MAX_TOTAL_SOAL) {
-      Swal.fire('Peringatan', `Maksimal ${MAX_TOTAL_SOAL} soal per generate untuk menjaga kedalaman analisis HOTS.`, 'warning');
+      Swal.fire('Peringatan', `Maksimal ${MAX_TOTAL_SOAL} soal per generate untuk menjaga kedalaman analisis.`, 'warning');
       return;
     }
 

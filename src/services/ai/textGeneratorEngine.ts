@@ -288,7 +288,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
 
     const prompt = `
       ${modeConfig.generation.role}
-      Task: Create ${params.count} HOTS (Higher Order Thinking Skills) questions.
+      Task: Create ${params.count} questions.
       
       Context:
       - Level: ${params.jenjang}
@@ -493,7 +493,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
         return { result: currentDraft, retries: 0 };
     }
 
-    console.log(`Step 2: Adaptive Refinement (Refining ${questionsToRefine.length} HOTS questions in batches)...`);
+    console.log(`Step 2: Adaptive Refinement (Refining ${questionsToRefine.length} questions in batches)...`);
     if (onProgress) onProgress(60);
 
     let refinedQuestions: any[] = [];

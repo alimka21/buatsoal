@@ -104,18 +104,27 @@ export default function AdminDashboard() {
 
       if (profilesError) throw profilesError;
 
-      // 2. Fetch question counts
-      const { data: questions, error: questionsError } = await supabase
-        .from('questions')
-        .select('user_id');
-
-      if (questionsError) throw questionsError;
-
-      // Count questions per user
+      // 2. Fetch question counts for each user in chunks to avoid rate limits
       const questionCounts: Record<string, number> = {};
-      questions?.forEach((q) => {
-        questionCounts[q.user_id] = (questionCounts[q.user_id] || 0) + 1;
-      });
+      const chunkSize = 20;
+      
+      for (let i = 0; i < profiles.length; i += chunkSize) {
+        const chunk = profiles.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(async (profile) => {
+            const { count, error } = await supabase
+              .from('questions')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', profile.id);
+              
+            if (!error && count !== null) {
+              questionCounts[profile.id] = count;
+            } else {
+              questionCounts[profile.id] = 0;
+            }
+          })
+        );
+      }
 
       // Merge data
       const formattedUsers: UserData[] = profiles.map((profile) => ({

@@ -582,7 +582,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
           <Edit3 size={20} className="text-royal-blue-600" />
           Formulir Pembuatan Soal
         </h2>
-        <p className="text-xs text-slate-500 mt-1">Lengkapi data untuk menghasilkan soal HOTS.</p>
+        <p className="text-xs text-slate-500 mt-1">Lengkapi data untuk menghasilkan soal.</p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
@@ -917,7 +917,7 @@ export default function GeneratorForm({ onSubmit, isLoading, onValuesChange }: G
           )}
         </button>
         <p className="text-[10px] text-slate-500 text-center mt-3 leading-relaxed">
-          Sistem dirancang untuk menjaga kualitas berbasis rubric dan analisis HOTS mendalam. Maksimal 20 soal per proses.
+          Sistem dirancang untuk menjaga kualitas berbasis rubric dan analisis mendalam. Maksimal 20 soal per proses.
         </p>
       </div>
 

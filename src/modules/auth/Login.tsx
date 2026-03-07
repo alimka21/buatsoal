@@ -107,7 +107,7 @@ export default function Login() {
           <h2 className="text-4xl font-bold mb-6 tracking-tight">AI GENERATOR</h2>
           
           <p className="text-lg text-blue-100 mb-10 leading-relaxed">
-            Asisten cerdas untuk membuat soal HOTS berkualitas tinggi sesuai kurikulum nasional.
+            Platform cerdas terpadu untuk merancang instrumen evaluasi yang komprehensif. Mendukung pembuatan soal Standar Sekolah, AKM (Literasi & Numerasi), TKA, serta tingkat Olimpiade.
           </p>
 
           <div className="flex items-center gap-4 bg-white/10 px-6 py-3 rounded-full border border-white/10 backdrop-blur-sm">
