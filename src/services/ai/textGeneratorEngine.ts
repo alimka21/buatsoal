@@ -208,7 +208,8 @@ function validateByMode(mode: AssessmentMode, jenjang: string, questions: any[])
         
         // 1. Check minimum cognitive level
         if (q._cognitive_level < config.minCognitive) {
-            throw new Error(`Question ${qNum} cognitive level (C${q._cognitive_level}) is below the minimum required (C${config.minCognitive}) for ${mode.toUpperCase()} mode.`);
+            const prefix = mode === 'akm' ? 'L' : 'C';
+            throw new Error(`Question ${qNum} cognitive level (${prefix}${q._cognitive_level}) is below the minimum required (${prefix}${config.minCognitive}) for ${mode.toUpperCase()} mode.`);
         }
         
         // 2. Enforce stimulus if required
@@ -232,12 +233,7 @@ function validateByMode(mode: AssessmentMode, jenjang: string, questions: any[])
         
         // Mode specific custom rules
         if (mode === 'akm') {
-            if (q.stimulus && q.stimulus.type === 'text' && q.stimulus.content) {
-                const wordCount = q.stimulus.content.split(/\s+/).length;
-                if (wordCount < 50 && (!q.stimulus.rows || q.stimulus.rows.length < 3)) {
-                    throw new Error(`Question ${qNum} stimulus is too short for AKM mode. Must be a rich text or a table with >= 3 rows.`);
-                }
-            }
+            // Stimulus length check removed as requested
             if (q.question.toLowerCase().includes("adalah pengertian dari") || q.question.toLowerCase().includes("yang dimaksud dengan")) {
                 throw new Error(`Question ${qNum} contains direct definition phrasing, which is forbidden in AKM mode.`);
             }
@@ -261,10 +257,27 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
     const modeConfig = getModeConfig(currentMode, params.jenjang);
 
     // Map cognitive level to string description
-    const cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
+    let cognitiveMap = ["C1 (Mengingat)", "C2 (Memahami)", "C3 (Mengaplikasikan)", "C4 (Menganalisis)", "C5 (Mengevaluasi)", "C6 (Mencipta)"];
+    
+    if (currentMode === 'akm') {
+      if (params.subject === 'Literasi Membaca') {
+        cognitiveMap = [
+          "L1 - Menemukan Informasi (Access and Retrieve): Mengidentifikasi dan mencari informasi tersurat dalam teks.",
+          "L2 - Memahami (Interpret and Integrate): Memahami informasi tersirat, menyimpulkan, dan mengintegrasikan bagian teks.",
+          "L3 - Mengevaluasi dan Merefleksi (Evaluate and Reflect): Menilai kredibilitas, format teks, dan mengaitkan isi teks dengan pengalaman diri."
+        ];
+      } else {
+        cognitiveMap = [
+          "L1 - Pemahaman (Knowing): Mengingat, mendefinisikan, dan memahami konsep serta prosedur matematika.",
+          "L2 - Penerapan (Applying): Menggunakan pengetahuan matematika untuk menyelesaikan masalah kontekstual (rutin).",
+          "L3 - Penalaran (Reasoning): Menganalisis, menyintesis, dan merumuskan strategi untuk masalah non-rutin dengan penalaran."
+        ];
+      }
+    }
+
     let cognitiveStr = "";
     if (Array.isArray(params.cognitive_level)) {
-        cognitiveStr = params.cognitive_level.map((level: number) => cognitiveMap[level - 1]).join(", ");
+        cognitiveStr = params.cognitive_level.map((level: number) => cognitiveMap[level - 1]).join("\n      - ");
     } else {
         cognitiveStr = cognitiveMap[params.cognitive_level - 1] || "C4 (Menganalisis)";
     }

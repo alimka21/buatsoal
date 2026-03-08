@@ -4,6 +4,8 @@ import { getFullAnswer } from '@/utils/formatAnswer';
 import { base64ToUint8Array } from '@/utils/imageUtils';
 import { stripLatex } from '@/utils/latexUtils';
 
+const CELL_MARGINS = { top: 150, bottom: 150, left: 150, right: 150 };
+
 const TYPE_LABELS: Record<string, string> = {
   multiple_choice: 'Pilihan Ganda',
   complex_multiple_choice: 'Pilihan Ganda Kompleks',
@@ -56,7 +58,7 @@ export function buildHeaderSection(result: any, formData: any) {
     new Paragraph({
       children: [
         new TextRun({
-          text: `Mata Pelajaran: ${result.subject || 'Biologi'}`,
+          text: `Mata Pelajaran: ${result.subject || 'Biologi'}${formData?.mode === 'standard' ? ` - ${formData?.class_grade || 'Kelas X'}` : ''}`,
           size: 24, // 12pt
         })
       ],
@@ -172,7 +174,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                             new TableCell({
                                 children: [new Paragraph({ children: parseTextToRuns(stripLatex(h), { bold: true, size: 24 }), alignment: AlignmentType.CENTER })],
                                 shading: { fill: "F3F4F6" }, // Light gray
-                                margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                                margins: CELL_MARGINS,
                             })
                         )
                     })
@@ -186,7 +188,7 @@ export function buildQuestionsSection(groupedQuestions: any, imageStates: any) {
                             children: row.map((cell: string) => 
                                 new TableCell({
                                     children: [new Paragraph({ children: parseTextToRuns(stripLatex(cell), { size: 24 }) })],
-                                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                                    margins: CELL_MARGINS,
                                 })
                             )
                         })
@@ -334,10 +336,12 @@ export function buildMatchingTable(q: any) {
                       new TableCell({
                           children: [new Paragraph({ children: [new TextRun({ text: "Pernyataan", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })],
                           width: { size: 50, type: WidthType.PERCENTAGE },
+                          margins: CELL_MARGINS,
                       }),
                       new TableCell({
                           children: [new Paragraph({ children: [new TextRun({ text: "Pasangan", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })],
                           width: { size: 50, type: WidthType.PERCENTAGE },
+                          margins: CELL_MARGINS,
                       }),
                   ],
               }),
@@ -346,9 +350,11 @@ export function buildMatchingTable(q: any) {
                       children: [
                           new TableCell({
                               children: [new Paragraph({ children: parseTextToRuns(`${i + 1}. ${stripLatex(pair.left)}`, { size: 24 }), spacing: { line: 360 } })], 
+                              margins: CELL_MARGINS,
                           }),
                           new TableCell({
                               children: [new Paragraph({ children: parseTextToRuns(`${String.fromCharCode(65 + i)}. ${stripLatex(pair.right)}`, { size: 24 }), spacing: { line: 360 } })], 
+                              margins: CELL_MARGINS,
                           }),
                       ],
                   })
@@ -386,10 +392,12 @@ export function buildMatchingTable(q: any) {
                     new TableCell({
                         children: [new Paragraph({ children: [new TextRun({ text: "Pernyataan", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })],
                         width: { size: 50, type: WidthType.PERCENTAGE },
+                        margins: CELL_MARGINS,
                     }),
                     new TableCell({
                         children: [new Paragraph({ children: [new TextRun({ text: "Jawaban", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })],
                         width: { size: 50, type: WidthType.PERCENTAGE },
+                        margins: CELL_MARGINS,
                     }),
                 ],
             }),
@@ -398,17 +406,19 @@ export function buildMatchingTable(q: any) {
                     children: [
                         new TableCell({
                             children: [new Paragraph({ children: parseTextToRuns(`${i + 1}. ${stripLatex(opt.split(' - ')[0] || '')}`, { size: 24 }), spacing: { line: 360 } })], 
+                            margins: CELL_MARGINS,
                         }),
                         new TableCell({
                             children: [new Paragraph({ children: [new TextRun({ text: `${i + 1}.`, size: 24 })], spacing: { line: 360 } })], 
+                            margins: CELL_MARGINS,
                         }),
                     ],
                 })
             ) : [
                 new TableRow({
                     children: [
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })], spacing: { line: 360 } })] }),
-                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })], spacing: { line: 360 } })] }),
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })], spacing: { line: 360 } })], margins: CELL_MARGINS }),
+                        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "1.", size: 24 })], spacing: { line: 360 } })], margins: CELL_MARGINS }),
                     ],
                 }),
             ]),
@@ -478,6 +488,7 @@ export function buildOptions(q: any, type: string) {
                             new Paragraph({ text: "", spacing: { line: 360 } }),
                             new Paragraph({ text: "", spacing: { line: 360 } })
                         ],
+                        margins: CELL_MARGINS,
                     }),
                 ],
             }),
@@ -565,11 +576,11 @@ export function buildMatrixSection(groupedQuestions: any, formData: any) {
           new TableRow({
               tableHeader: true,
               children: [
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Nomor Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 10, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Tujuan Pembelajaran", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 30, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Materi", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 25, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Level Kognitif", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 15, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Bentuk Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 20, type: WidthType.PERCENTAGE }, margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Nomor Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 10, type: WidthType.PERCENTAGE }, margins: CELL_MARGINS }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Tujuan Pembelajaran", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 30, type: WidthType.PERCENTAGE }, margins: CELL_MARGINS }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Materi", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 25, type: WidthType.PERCENTAGE }, margins: CELL_MARGINS }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Level Kognitif", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 15, type: WidthType.PERCENTAGE }, margins: CELL_MARGINS }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Bentuk Soal", bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], width: { size: 20, type: WidthType.PERCENTAGE }, margins: CELL_MARGINS }),
               ],
           }),
           ...Object.entries(groupedQuestions).flatMap(([type, questions]: [string, any]) => 
@@ -580,11 +591,11 @@ export function buildMatrixSection(groupedQuestions: any, formData: any) {
                   
                   return new TableRow({
                       children: [
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: learningObjective, size: 24 })], spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: topic, size: 24 })], spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._cognitive_level ? `C${q._cognitive_level}` : '-', size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
-                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: TYPE_LABELS[type] || type, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: { top: 100, bottom: 100, left: 100, right: 100 } }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${globalMIndex}`, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: CELL_MARGINS }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: learningObjective, size: 24 })], spacing: { line: 360 } })], margins: CELL_MARGINS }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: topic, size: 24 })], spacing: { line: 360 } })], margins: CELL_MARGINS }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: q._cognitive_level ? `${formData?.mode === 'akm' ? 'L' : 'C'}${q._cognitive_level}` : '-', size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: CELL_MARGINS }),
+                          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: TYPE_LABELS[type] || type, size: 24 })], alignment: AlignmentType.CENTER, spacing: { line: 360 } })], margins: CELL_MARGINS }),
                       ],
                   });
               })

@@ -293,7 +293,7 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
           {/* Document Header */}
           <div className="text-center border-b-2 border-black pb-6 mb-8">
             <h2 className="text-3xl font-bold uppercase tracking-wider mb-2">DAFTAR SOAL</h2>
-            <p className="text-base font-semibold">Mata Pelajaran: {result?.subject || 'Biologi'} - {formData?.class_grade || 'Kelas X'}</p>
+            <p className="text-base font-semibold">Mata Pelajaran: {result?.subject || 'Biologi'}{formData?.mode === 'standard' ? ` - ${formData?.class_grade || 'Kelas X'}` : ''}</p>
           </div>
 
           {/* Content based on Tab */}
@@ -558,8 +558,8 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                                 {q._topic ? (Array.isArray(q._topic) ? q._topic[0] : String(q._topic).split(',')[0].trim()) : '-'}
                               </td>
                               <td className="border border-slate-300 px-4 py-2 text-center">
-                                {q._cognitive_level ? `C${q._cognitive_level}` : (Array.isArray(formData?.cognitive_level) 
-                                  ? formData.cognitive_level.map((l: number) => `C${l}`).join(', ') 
+                                {q._cognitive_level ? `${formData?.mode === 'akm' ? 'L' : 'C'}${q._cognitive_level}` : (Array.isArray(formData?.cognitive_level) 
+                                  ? formData.cognitive_level.map((l: number) => `${formData?.mode === 'akm' ? 'L' : 'C'}${l}`).join(', ') 
                                   : `L${Math.ceil((formData?.cognitive_level || 1)/2)} (C${formData?.cognitive_level})`)}
                               </td>
                               <td className="border border-slate-300 px-4 py-2 text-center capitalize">{TYPE_LABELS[type] || type}</td>
