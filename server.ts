@@ -32,6 +32,41 @@ if (supabaseUrl && supabaseServiceKey) {
 }
 
 // API Routes
+app.post('/api/admin/question-counts', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Server misconfigured: Missing Supabase Service Key' });
+  }
+
+  const { userIds } = req.body;
+  if (!Array.isArray(userIds)) {
+    return res.status(400).json({ error: 'userIds must be an array' });
+  }
+
+  try {
+    const counts: Record<string, number> = {};
+    const chunkSize = 20;
+    
+    for (let i = 0; i < userIds.length; i += chunkSize) {
+      const chunk = userIds.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map(async (id) => {
+          const { count, error } = await supabaseAdmin
+            .from('questions')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', id);
+            
+          counts[id] = count || 0;
+        })
+      );
+    }
+    
+    res.json(counts);
+  } catch (error: any) {
+    console.error('Error fetching question counts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/admin/create-user', async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ error: 'Server misconfigured: Missing Supabase Service Key' });

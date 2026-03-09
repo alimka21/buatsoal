@@ -104,26 +104,22 @@ export default function AdminDashboard() {
 
       if (profilesError) throw profilesError;
 
-      // 2. Fetch question counts for each user in chunks to avoid rate limits
-      const questionCounts: Record<string, number> = {};
-      const chunkSize = 20;
-      
-      for (let i = 0; i < profiles.length; i += chunkSize) {
-        const chunk = profiles.slice(i, i + chunkSize);
-        await Promise.all(
-          chunk.map(async (profile) => {
-            const { count, error } = await supabase
-              .from('questions')
-              .select('*', { count: 'exact', head: true })
-              .eq('user_id', profile.id);
-              
-            if (!error && count !== null) {
-              questionCounts[profile.id] = count;
-            } else {
-              questionCounts[profile.id] = 0;
-            }
-          })
-        );
+      // 2. Fetch question counts for each user using the backend API to bypass RLS
+      let questionCounts: Record<string, number> = {};
+      try {
+        const response = await fetch('/api/admin/question-counts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userIds: profiles.map(p => p.id) })
+        });
+        
+        if (response.ok) {
+          questionCounts = await response.json();
+        } else {
+          console.error("Failed to fetch question counts from API");
+        }
+      } catch (err) {
+        console.error("Error calling question counts API:", err);
       }
 
       // Merge data
