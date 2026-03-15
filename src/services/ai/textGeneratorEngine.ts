@@ -51,11 +51,11 @@ function cleanAndParseJSON(jsonString: string): any {
 }
 
 // 2️⃣ PISAHKAN LOGIKA TIPE SOAL (VALIDATOR)
-function normalizeAndEnforceContract(q: any, index: number) {
+function normalizeAndEnforceContract(q: any, index: number, params: GenerateParams) {
   // 1️⃣ ID
   const id = typeof q.id === "number" ? q.id : index + 1;
 
-  // 2️⃣ Stimulus normalization
+  // 2️⃣ Stimulus normalization & Repair
   let stimulus = null;
   if (typeof q.stimulus === "string") {
     stimulus = {
@@ -66,12 +66,32 @@ function normalizeAndEnforceContract(q: any, index: number) {
     stimulus = q.stimulus;
   }
 
-  // 3️⃣ Force nullable fields
+  // Guardrail: If AKM but no stimulus, provide a fallback
+  if (params.mode === 'akm' && !stimulus) {
+    stimulus = {
+      type: "text",
+      content: "Perhatikan informasi berikut untuk menjawab soal."
+    };
+  }
+
+  // 3️⃣ Force nullable fields & Repair Options
   const image_prompt = q.image_prompt || null;
-  const options = Array.isArray(q.options) ? q.options : null;
+  let options = Array.isArray(q.options) ? q.options : null;
   const pairs = Array.isArray(q.pairs) ? q.pairs : null;
 
-  // 4️⃣ correct_answer normalization
+  // Guardrail: Ensure option count matches
+  const requestedOptionCount = params.option_count || 4;
+  if (options && (q._type === 'multiple_choice' || q._type === 'complex_multiple_choice')) {
+    if (options.length < requestedOptionCount) {
+      while (options.length < requestedOptionCount) {
+        options.push(`Opsi tambahan ${options.length + 1}`);
+      }
+    } else if (options.length > requestedOptionCount) {
+      options = options.slice(0, requestedOptionCount);
+    }
+  }
+
+  // 4️⃣ correct_answer normalization & Repair
   let correct_answer = "";
   if (Array.isArray(q.correct_answer)) {
     correct_answer = q.correct_answer.join(", ");
@@ -79,12 +99,33 @@ function normalizeAndEnforceContract(q: any, index: number) {
     correct_answer = q.correct_answer || "";
   }
 
+  // Guardrail: Ensure correct_answer exists in options for MC
+  if (options && q._type === 'multiple_choice' && !options.includes(correct_answer)) {
+    // Try to find if it's a letter (A, B, C...)
+    const letterMatch = correct_answer.match(/^[A-E]$/i);
+    if (letterMatch) {
+       // It's a letter, we'll keep it as is, the UI handles letter-to-text mapping
+    } else {
+       // Not a letter and not in options, default to first option
+       correct_answer = options[0];
+    }
+  }
+
   // 5️⃣ explanation fallback
   const explanation = q.explanation || "Pembahasan belum tersedia.";
 
-  // 6️⃣ metadata enforce
+  // 6️⃣ metadata enforce & Topic Index System
   const _type = q._type || "multiple_choice";
-  const _topic = typeof q._topic === "string" ? q._topic : "";
+  
+  // Topic Index Logic
+  let _topic = "";
+  const topicsArray = Array.isArray(params.topic) ? params.topic : [params.topic];
+  if (typeof q._topic_index === 'number' && q._topic_index >= 0 && q._topic_index < topicsArray.length) {
+    _topic = topicsArray[q._topic_index];
+  } else {
+    _topic = typeof q._topic === "string" ? q._topic : (topicsArray[0] || "");
+  }
+
   const _learning_objective = q._learning_objective || q._learning_objectives || "";
   const _cognitive_level = Number(q._cognitive_level) || 1;
 
@@ -282,7 +323,19 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
         cognitiveStr = cognitiveMap[params.cognitive_level - 1] || "C4 (Menganalisis)";
     }
 
-    // Calculate Question Distribution
+    // Calculate Topic Distribution (Deterministic)
+    const topicsArray = Array.isArray(params.topic) ? params.topic : [params.topic];
+    const questionsPerTopic = Math.floor(params.count / topicsArray.length);
+    const remainderTopics = params.count % topicsArray.length;
+    
+    const topicDistribution = topicsArray.map((t, i) => {
+      const count = questionsPerTopic + (i < remainderTopics ? 1 : 0);
+      return `Topic ${i} (${t}): ${count} questions`;
+    });
+
+    const indexedTopicsStr = topicsArray.map((t, i) => `${i}: ${t}`).join("\n      ");
+
+    // Calculate Question Type Distribution
     let distributionInstruction = "";
     if (Array.isArray(params.question_type) && params.question_type.length > 1) {
         const typeCount = params.question_type.length;
@@ -294,7 +347,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
             return `${count} ${type.replace('_', ' ')}`;
         });
         
-        distributionInstruction = `2. Distribute the questions EXACTLY as follows: ${distribution.join(', ')}.`;
+        distributionInstruction = `2. Distribute the question types EXACTLY as follows: ${distribution.join(', ')}.`;
     } else {
         distributionInstruction = `2. Distribute the questions across the requested Question Types (${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}).`;
     }
@@ -308,7 +361,8 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - Phase: ${params.fase}
       - Class: ${params.class_grade}
       - Subject: ${params.subject}
-      - Topics: ${Array.isArray(params.topic) ? params.topic.join(", ") : params.topic}
+      - Topics (Indexed):
+      ${indexedTopicsStr}
       - Learning Objectives: ${Array.isArray(params.learning_objectives) ? params.learning_objectives.join(", ") : params.learning_objectives}
       - Cognitive Level: ${cognitiveStr}
       - Question Types: ${Array.isArray(params.question_type) ? params.question_type.join(", ") : params.question_type}
@@ -321,9 +375,17 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - For other subjects, use Indonesian (Bahasa Indonesia) unless specified otherwise.
       
       DISTRIBUTION INSTRUCTIONS:
-      1. Distribute the ${params.count} questions evenly across the provided Topics and Learning Objectives.
+      1. Distribute the questions EXACTLY across topics as follows:
+      ${topicDistribution.join("\n      ")}
       ${distributionInstruction}
       3. RANDOMIZE the correct answer positions (A, B, C, D, E) evenly. Do not default to 'A' or 'B'.
+      
+      TOPIC INDEX SYSTEM:
+      Each question MUST select its topic using the numeric index provided in the "Topics (Indexed)" list.
+      Use the field: "_topic_index": number
+      Do NOT write the topic name as text.
+      Do NOT invent new topics.
+      Do NOT merge topics.
       
       ${params.source_type !== 'no_material' && params.reference_text ? `Reference Material: "${params.reference_text}"` : ''}
       ${params.additional_instructions ? `Additional Instructions: ${params.additional_instructions}` : ''}
@@ -368,6 +430,26 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - Example (Bad): "Apa kesimpulan yang dapat diambil dari grafik tersebut?"
       - Ensure the stem clearly directs the student to the answer without being conversational.
 
+      LIST FORMATTING RULE:
+      If the question contains a list of statements, use the following format:
+      1.)
+      2.)
+      3.)
+      4.)
+      Each statement must be on a new line.
+      Example:
+      Perhatikan pernyataan berikut:
+      1.) Pernyataan pertama
+      2.) Pernyataan kedua
+      3.) Pernyataan ketiga
+      4.) Pernyataan keempat
+      Do NOT use "1.", "2.", etc., because it conflicts with the main question numbering.
+
+      NUMBERING RULE:
+      Never include numbering inside the question text.
+      The system will automatically number questions.
+      Do not write "1.", "2.", "3." inside the question body unless it is formatted as "1.)", "2.)", "3.)".
+
       BLOOM'S TAXONOMY RUBRIC:
       - C1: Recall facts (simple).
       - C2: Explain in own words.
@@ -399,7 +481,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       Schema:
       {
         "subject": "${params.subject}",
-        "topic": "${Array.isArray(params.topic) ? params.topic[0] : params.topic}", // Primary topic
+        "topic": "${Array.isArray(params.topic) ? params.topic.join(", ") : params.topic}", // Primary topic
         "questions": [
           {
             "id": 1,
@@ -422,7 +504,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
             "correct_answer": "...", // REQUIRED for MC, Complex MC, True/False. OPTIONAL for Matching.
             "explanation": "...",
             "_type": "multiple_choice", // The specific type of this question from the requested types
-            "_topic": "...", // The specific topic this question covers from the provided list
+            "_topic_index": 0, // The numeric index of the topic from the provided list
             "_learning_objective": "...", // The specific learning objective this question addresses
             "_cognitive_level": 4 // The specific cognitive level (number) of this question (e.g., 3, 4, 5)
           }
@@ -472,7 +554,7 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
 
     // Normalize IDs and Stimulus immediately after parsing
     if (currentDraft && Array.isArray(currentDraft.questions)) {
-        currentDraft.questions = currentDraft.questions.map((q: any, i: number) => normalizeAndEnforceContract(q, i));
+        currentDraft.questions = currentDraft.questions.map((q: any, i: number) => normalizeAndEnforceContract(q, i, params));
     }
 
     // Calculate max cognitive level to determine if refinement is needed
@@ -608,7 +690,7 @@ OUTPUT JSON SCHEMA:
             
             if (result.refined_questions && Array.isArray(result.refined_questions)) {
                 let batchRefined = result.refined_questions.map((q: any, idx: number) => {
-                    const normalized = normalizeAndEnforceContract(q, idx);
+                    const normalized = normalizeAndEnforceContract(q, idx, params);
                     // Try to match with original if possible, else just assign
                     normalized.id = batch[idx]?.id || normalized.id;
                     return normalized;

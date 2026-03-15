@@ -288,10 +288,8 @@ export default function ProjectDetail() {
 
                     {q.stimulus && (
                       <div className="mb-4 text-sm text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        {typeof q.stimulus === 'string' ? (
-                          <Latex delimiters={latexDelimiters}>{q.stimulus}</Latex>
-                        ) : (
-                          <span className="italic text-slate-500">[Stimulus Terstruktur]</span>
+                        {q.stimulus?.type === 'text' && (
+                          <Latex delimiters={latexDelimiters}>{q.stimulus.content}</Latex>
                         )}
                       </div>
                     )}
@@ -356,7 +354,13 @@ export default function ProjectDetail() {
                         <tr key={pq.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4 text-center font-medium text-slate-900">{index + 1}</td>
                           <td className="px-6 py-4 text-slate-700">{q._learning_objective || q._learning_objectives || '-'}</td>
-                          <td className="px-6 py-4 text-slate-700">{q._topic ? (Array.isArray(q._topic) ? q._topic[0] : String(q._topic).split(',')[0].trim()) : '-'}</td>
+                          <td className="px-6 py-4 text-slate-700">
+                            {q._topic
+                              ? (Array.isArray(q._topic)
+                                  ? q._topic.join(', ')
+                                  : q._topic)
+                              : '-'}
+                          </td>
                           <td className="px-6 py-4 text-center text-slate-700 font-medium">C{q._cognitive_level}</td>
                           <td className="px-6 py-4 text-center text-slate-700 capitalize text-xs">{q._type?.replace(/_/g, ' ')}</td>
                         </tr>

@@ -289,7 +289,14 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
       {/* Document Preview Area */}
       <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-slate-100 custom-scrollbar">
         <div className="w-full max-w-4xl bg-white text-slate-900 min-h-full shadow-md rounded-lg p-12 document-font leading-relaxed text-[16px]">
-          
+          <style>{`
+            .document-font {
+              font-family: "Times New Roman", serif;
+            }
+            .document-font p {
+              text-align: justify;
+            }
+          `}</style>
           {/* Document Header */}
           <div className="text-center border-b-2 border-black pb-6 mb-8">
             <h2 className="text-3xl font-bold uppercase tracking-wider mb-2">DAFTAR SOAL</h2>
@@ -309,8 +316,8 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                         const imgState = imageStates[q.id];
                         return (
                           <div key={globalQuestionIndex} className="break-inside-avoid relative group">
-                            <div className="flex gap-2 mb-2 p-2 rounded-lg transition-colors hover:bg-slate-50">
-                              <span className="font-bold">{globalQuestionIndex}.</span>
+                            <div className="grid grid-cols-[30px_1fr] gap-2 mb-2 p-2 rounded-lg transition-colors hover:bg-slate-50">
+                              <span className="font-bold text-right">{globalQuestionIndex}.</span>
                               <div className="flex-1">
                                 {q.stimulus && (
                                   <div className="mb-4 text-justify">
@@ -466,13 +473,13 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                                   // Remove prefix if AI added it (e.g., "A. Answer")
                                   const cleanOpt = opt.replace(/^[A-Ea-e][\.\)]\s*/, '');
                                   return (
-                                  <div key={i} className="flex gap-3 items-start">
+                                  <div key={i} className="grid grid-cols-[30px_1fr] gap-2 items-start">
                                     {q._type === 'complex_multiple_choice' ? (
-                                      <div className="w-5 h-5 border-2 border-slate-300 rounded flex-shrink-0 mt-0.5 bg-white"></div>
+                                      <div className="w-5 h-5 border-2 border-slate-300 rounded flex-shrink-0 mt-0.5 bg-white justify-self-end"></div>
                                     ) : q._type === 'true_false' ? (
-                                      <div className="w-5 h-5 border-2 border-slate-300 rounded-full flex-shrink-0 mt-0.5 bg-white"></div>
+                                      <div className="w-5 h-5 border-2 border-slate-300 rounded-full flex-shrink-0 mt-0.5 bg-white justify-self-end"></div>
                                     ) : (
-                                      <span className="font-bold min-w-[1.5rem]">{String.fromCharCode(65 + i)}.</span>
+                                      <span className="font-bold text-right">{String.fromCharCode(65 + i)}.</span>
                                     )}
                                     <span><Latex delimiters={latexDelimiters}>{cleanOpt}</Latex></span>
                                   </div>
@@ -507,8 +514,8 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                         globalAnswerIndex++;
                         return (
                           <div key={globalAnswerIndex} className="break-inside-avoid p-4 bg-white rounded-lg border border-slate-200">
-                            <div className="flex gap-2">
-                              <span className="font-bold text-slate-900">{globalAnswerIndex}.</span>
+                            <div className="grid grid-cols-[30px_1fr] gap-2 items-start">
+                              <span className="font-bold text-slate-900 text-right">{globalAnswerIndex}.</span>
                               <div className="flex-1">
                                 <div className="mb-2">
                                   <span className="font-bold text-slate-900">Jawaban: <Latex delimiters={latexDelimiters}>{getFullAnswer(q.correct_answer, q.options)}</Latex></span>
@@ -555,7 +562,11 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
                                 {q._learning_objective || q._learning_objectives || '-'}
                               </td>
                               <td className="border border-slate-300 px-4 py-2">
-                                {q._topic ? (Array.isArray(q._topic) ? q._topic[0] : String(q._topic).split(',')[0].trim()) : '-'}
+                                {q._topic
+                                  ? (Array.isArray(q._topic)
+                                      ? q._topic.join(', ')
+                                      : q._topic)
+                                  : '-'}
                               </td>
                               <td className="border border-slate-300 px-4 py-2 text-center">
                                 {q._cognitive_level ? `${formData?.mode === 'akm' ? 'L' : 'C'}${q._cognitive_level}` : (Array.isArray(formData?.cognitive_level) 
