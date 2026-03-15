@@ -145,7 +145,7 @@ export default function AdminDashboard() {
     setEditingId(user.id);
     setEditForm({
       full_name: user.full_name,
-      email: user.email,
+      email: user.email.endsWith('@user.local') ? user.email.replace('@user.local', '') : user.email,
       password_text: user.password_text, // Pre-fill with existing password text
     });
   };
@@ -219,8 +219,22 @@ export default function AdminDashboard() {
   };
 
   const handleAddUser = async () => {
-    if (!newUserForm.email || !newUserForm.password || !newUserForm.full_name) {
-      Swal.fire('Error', 'Please fill in all fields', 'error');
+    let email = newUserForm.email.trim();
+    const password = newUserForm.password;
+    const full_name = newUserForm.full_name.trim();
+
+    if (!email || !password || !full_name) {
+      Swal.fire('Error', 'Semua kolom harus diisi', 'error');
+      return;
+    }
+
+    if (!email.includes('@')) {
+      email = `${email}@user.local`;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Swal.fire('Error', 'Format email tidak valid. Pastikan menggunakan format yang benar (contoh: user@gmail.com)', 'error');
       return;
     }
 
@@ -232,9 +246,9 @@ export default function AdminDashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: newUserForm.email,
-          password: newUserForm.password,
-          full_name: newUserForm.full_name,
+          email: email,
+          password: password,
+          full_name: full_name,
         }),
       });
 
@@ -353,9 +367,9 @@ export default function AdminDashboard() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Username / Email</label>
                 <input 
-                  type="email" 
+                  type="text" 
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 outline-none"
                   value={newUserForm.email}
                   onChange={(e) => setNewUserForm({...newUserForm, email: e.target.value})}
@@ -459,7 +473,7 @@ export default function AdminDashboard() {
 
                   {/* Email */}
                   <td className="px-6 py-4 text-slate-600">
-                    {user.email}
+                    {user.email.endsWith('@user.local') ? user.email.replace('@user.local', '') : user.email}
                   </td>
 
                   {/* Password Text */}

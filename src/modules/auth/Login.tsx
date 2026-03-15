@@ -9,7 +9,7 @@ import { useAuthStore } from '@/store/authStore';
 import Swal from 'sweetalert2';
 
 const loginSchema = z.object({
-  email: z.string().email("Email tidak valid"),
+  email: z.string().min(3, "Username/Email minimal 3 karakter"),
   password: z.string().min(6, "Password minimal 6 karakter"),
 });
 
@@ -53,8 +53,13 @@ export default function Login() {
     setIsLoading(true);
 
     try {
+      let loginEmail = data.email.trim();
+      if (!loginEmail.includes('@')) {
+        loginEmail = `${loginEmail}@user.local`;
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
+        email: loginEmail,
         password: data.password,
       });
 
@@ -140,16 +145,16 @@ export default function Login() {
           <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-5">
               <div>
-                <label htmlFor="email" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email</label>
+                <label htmlFor="email" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Username / Email</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Mail className="h-5 w-5 text-slate-400" />
                   </div>
                   <input
                     id="email"
-                    type="email"
+                    type="text"
                     className="block w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-royal-blue-500/20 focus:border-royal-blue-500 transition-all"
-                    placeholder="nama@email.com"
+                    placeholder="Masukkan username atau email"
                     {...register('email')}
                   />
                 </div>
