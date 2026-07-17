@@ -1,4 +1,4 @@
-import { Copy, Printer, Download, FileText, CheckCircle, Grid, Save, Image as ImageIcon, Trash2, Play, Loader2, Package, Plus, Folder } from 'lucide-react';
+import { Copy, Printer, Download, FileText, CheckCircle, Grid, Save, Image as ImageIcon, Trash2, Play, Loader2, Package, Plus, Folder, AlertCircle, Settings } from 'lucide-react';
 import { getFullAnswer } from '@/utils/formatAnswer';
 import Swal from 'sweetalert2';
 import { useState, useEffect } from 'react';
@@ -11,6 +11,8 @@ import { generateImage } from '@/services/ai/imageModelService';
 import 'katex/dist/katex.min.css';
 import Latex from '@/components/Latex';
 import { buildHeaderSection, buildQuestionsSection, buildAnswerSection, buildMatrixSection } from '@/services/docxBuilder';
+import { Link } from 'react-router-dom';
+import { parseAndTranslateError } from '@/services/ai/aiClient';
 
 interface ResultViewerProps {
   result: any;
@@ -65,11 +67,47 @@ export default function ResultViewer({ result, cached, isLoading, error, formDat
   };
 
   if (error) {
+    const cleanErr = parseAndTranslateError(error);
     return (
-      <div className="h-full flex items-center justify-center p-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl shadow-sm flex items-center gap-3 max-w-md">
-          <div className="p-2 bg-red-100 rounded-full text-red-600">⚠️</div>
-          <p className="font-medium">{error}</p>
+      <div className="h-full flex items-center justify-center p-8 bg-slate-50 overflow-y-auto">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 max-w-xl w-full text-center space-y-6">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-100">
+            <AlertCircle size={32} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-slate-900">{cleanErr.title}</h2>
+            <p className="text-slate-600 text-sm leading-relaxed">{cleanErr.message}</p>
+          </div>
+          
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-2">
+            <h4 className="font-semibold text-xs text-slate-500 uppercase tracking-wider">💡 Rekomendasi Tindakan</h4>
+            <p className="text-slate-600 text-sm leading-relaxed">{cleanErr.suggestion}</p>
+          </div>
+
+          {cleanErr.raw && (
+            <details className="text-left bg-slate-100/50 rounded-xl border border-slate-100 p-3">
+              <summary className="text-xs font-semibold text-slate-500 cursor-pointer select-none">Detail Teknis (Raw Error Log)</summary>
+              <pre className="mt-2 text-[10px] font-mono bg-slate-900 text-slate-300 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap max-h-40">{cleanErr.raw}</pre>
+            </details>
+          )}
+
+          <div className="flex gap-4 pt-2">
+            <button
+              onClick={() => {
+                if (onReset) onReset();
+                else useGeneratorStore.getState().reset();
+              }}
+              className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors border border-slate-200 text-sm"
+            >
+              Ubah Parameter
+            </button>
+            <Link
+              to="/settings"
+              className="flex-1 py-2.5 px-4 bg-royal-blue-600 hover:bg-royal-blue-700 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+            >
+              <Settings size={16} /> Pengaturan API Key
+            </Link>
+          </div>
         </div>
       </div>
     );

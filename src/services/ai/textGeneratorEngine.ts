@@ -464,10 +464,10 @@ export const generateTextQuestions = async (params: GenerateParams, apiKey?: str
       - No absurd or joke options.
 
       IMAGE PROMPT RULES:
-      - STRICT RULE: ONLY generate an "image_prompt" if the question ABSOLUTELY REQUIRES visualization to be understood (e.g., geometry, biology diagrams, physics setups).
-      - DO NOT generate images for algebra, arithmetic, simple equations, or text-based questions.
-      - If the question can be understood without a visual, set "image_prompt" to null or empty string.
-      - If an image is needed, describe the object in detail so an image generator can create it.
+      - ACTIVE RULE: Generate a detailed "image_prompt" whenever an educational illustration, diagram, science schema, conceptual layout, history visual, or chart would significantly enhance the learning experience or clarity of the question (e.g., biological cycles/systems, physics vector forces, chemistry apparatus setups, math coordinates/geometry, historical context maps, structure charts).
+      - Always write high-quality, extremely detailed description prompts for the image generator, detailing shapes, labels, colors, and layout clearly.
+      - If the question does not need any visualization at all (e.g., simple text grammar, basic algebra calculation, vocabulary), set "image_prompt" to null or an empty string.
+      - Describe the target object in detail so an image generator can create it. Do not include styling terms like 'photorealistic', stick to 'clean educational vector illustration, simple diagram' style.
 
       SELF-VALIDATION (Internal Step):
       - Verify Bloom's level match.

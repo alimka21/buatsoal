@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { generateQuestions, GenerateParams } from '@/services/questionService';
 import { generateHash } from '@/services/hashService';
+import { parseAndTranslateError } from '@/services/ai/aiClient';
 import Swal from 'sweetalert2';
 
 export const MAX_TOTAL_SOAL = 20;
@@ -73,12 +74,29 @@ export const useGeneratorStore = create<GeneratorState>((set, get) => ({
 
     } catch (error: any) {
       console.error("Generation error:", error);
+      const cleanErr = parseAndTranslateError(error);
+      
       set({ 
         isGenerating: false, 
-        error: error.message || "Gagal membuat soal",
+        error: `${cleanErr.title}: ${cleanErr.message}`,
         progress: 0
       });
-      Swal.fire('Error', error.message || 'Terjadi kesalahan saat membuat soal', 'error');
+      
+      Swal.fire({
+        icon: 'error',
+        title: cleanErr.title,
+        html: `
+          <div class="text-left space-y-3">
+            <p class="font-medium text-slate-700 text-sm leading-relaxed">${cleanErr.message}</p>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500 leading-relaxed">
+              <p class="font-bold text-slate-600 mb-1">💡 Rekomendasi tindakan:</p>
+              <p>${cleanErr.suggestion}</p>
+            </div>
+          </div>
+        `,
+        confirmButtonText: 'Tutup',
+        confirmButtonColor: '#2563eb'
+      });
     }
   },
 
